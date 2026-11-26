@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
@@ -15,10 +17,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	setup "github.com/paloaltonetworks/scm-go"
 
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
 	tfProviderConfigOperations "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/config_operations"
 	tfProviderConfigSetup "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/config_setup"
 	tfProviderDeploymentServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/deployment_services"
 	tfProviderDeviceSettings "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/device_settings"
+	tfProviderDlp "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp"
 	tfProviderIdentityServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/identity_services"
 	tfProviderMobileAgent "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/mobile_agent"
 	tfProviderNetworkServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/network_services"
@@ -54,18 +58,20 @@ type ScmProvider struct {
 
 // ScmProviderModel maps provider schema data to a Go type.
 type ScmProviderModel struct {
-	AuthUrl      types.String `tfsdk:"auth_url"`
-	Protocol     types.String `tfsdk:"protocol"`
-	Host         types.String `tfsdk:"host"`
-	ZtnaHost     types.String `tfsdk:"ztna_host"`
-	XPanwRegion  types.String `tfsdk:"x_panw_region"`
-	Port         types.Int64  `tfsdk:"port"`
-	Headers      types.Map    `tfsdk:"headers"`
-	ClientId     types.String `tfsdk:"client_id"`
-	ClientSecret types.String `tfsdk:"client_secret"`
-	Scope        types.String `tfsdk:"scope"`
-	Logging      types.String `tfsdk:"logging"`
-	AuthFile     types.String `tfsdk:"auth_file"`
+	AuthUrl        types.String `tfsdk:"auth_url"`
+	Protocol       types.String `tfsdk:"protocol"`
+	Host           types.String `tfsdk:"host"`
+	ZtnaHost       types.String `tfsdk:"ztna_host"`
+	DlpHost        types.String `tfsdk:"dlp_host"`
+	DlpServiceName types.String `tfsdk:"dlp_service_name"`
+	XPanwRegion    types.String `tfsdk:"x_panw_region"`
+	Port           types.Int64  `tfsdk:"port"`
+	Headers        types.Map    `tfsdk:"headers"`
+	ClientId       types.String `tfsdk:"client_id"`
+	ClientSecret   types.String `tfsdk:"client_secret"`
+	Scope          types.String `tfsdk:"scope"`
+	Logging        types.String `tfsdk:"logging"`
+	AuthFile       types.String `tfsdk:"auth_file"`
 }
 
 // Metadata returns the provider type name.
@@ -93,6 +99,14 @@ func (p *ScmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 			},
 			"ztna_host": schema.StringAttribute{
 				Description: "The hostname of the ZTNA Connector API. Required when using ztna_* resources. Default: `api.sase.paloaltonetworks.com`. Environment variable: `ZTNA_HOST`. JSON config file variable: `ztna_host`.",
+				Optional:    true,
+			},
+			"dlp_host": schema.StringAttribute{
+				Description: "The hostname of the Enterprise DLP API. Default: `api.dlp.paloaltonetworks.com`. Environment variable: `SCM_DLP_HOST` or `DLP_HOST`.",
+				Optional:    true,
+			},
+			"dlp_service_name": schema.StringAttribute{
+				Description: "The service-name header sent to the Enterprise DLP API. Default: `prisma-access`. Environment variable: `SCM_DLP_SERVICE_NAME` or `DLP_SERVICE_NAME`.",
 				Optional:    true,
 			},
 			"x_panw_region": schema.StringAttribute{
@@ -154,17 +168,46 @@ func (p *ScmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		headers[hkey] = hval.ValueString()
 	}
 
+	authUrl := config.AuthUrl.ValueString()
+	if authUrl == "" {
+		authUrl = strings.TrimSpace(os.Getenv("DLP_AUTH_URL"))
+	}
+	clientId := config.ClientId.ValueString()
+	if clientId == "" {
+		clientId = strings.TrimSpace(os.Getenv("DLP_CLIENT_ID"))
+	}
+	clientSecret := config.ClientSecret.ValueString()
+	if clientSecret == "" {
+		clientSecret = strings.TrimSpace(os.Getenv("DLP_CLIENT_SECRET"))
+	}
+	scope := config.Scope.ValueString()
+	if scope == "" {
+		if tsgId := strings.TrimSpace(os.Getenv("DLP_TSG_ID")); tsgId != "" {
+			if strings.HasPrefix(tsgId, "tsg_id:") {
+				scope = tsgId
+			} else {
+				scope = "tsg_id:" + tsgId
+			}
+		}
+	}
+	dlpHost := config.DlpHost.ValueString()
+	if dlpHost == "" {
+		if v := strings.TrimSpace(os.Getenv("DLP_API_URL")); v != "" {
+			dlpHost = v
+		}
+	}
+
 	setupClient := &setup.Client{
-		AuthUrl:          config.AuthUrl.ValueString(),
+		AuthUrl:          authUrl,
 		Protocol:         config.Protocol.ValueString(),
 		Host:             config.Host.ValueString(),
 		ZtnaHost:         config.ZtnaHost.ValueString(),
 		XPanwRegion:      config.XPanwRegion.ValueString(),
 		Port:             int(config.Port.ValueInt64()),
 		Headers:          headers,
-		ClientId:         config.ClientId.ValueString(),
-		ClientSecret:     config.ClientSecret.ValueString(),
-		Scope:            config.Scope.ValueString(),
+		ClientId:         clientId,
+		ClientSecret:     clientSecret,
+		Scope:            scope,
 		AuthFile:         config.AuthFile.ValueString(),
 		Logging:          config.Logging.ValueString(),
 		Logger:           tflog.Debug,
@@ -238,6 +281,14 @@ func (p *ScmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		"security_services":   setup.GetSecurityServicesAPIClient(setupClient),
 		"ztna_connector_all":  setup.GetZtnaConnectorAllAPIClient(setupClient),
 		"config_operations":   setup.GetConfigOperationsAPIClient(setupClient),
+		"dlp": dlpclient.NewClient(dlpclient.Config{
+			SetupClient: setupClient,
+			HttpClient:  setupClient.HttpClient,
+			Protocol:    setupClient.Protocol,
+			Host:        dlpHost,
+			ServiceName: config.DlpServiceName.ValueString(),
+			UserAgent:   setupClient.Agent,
+		}),
 	}
 
 	resp.DataSourceData = clients
@@ -267,6 +318,8 @@ func (p *ScmProvider) DataSources(ctx context.Context) []func() datasource.DataS
 	dataSources = append(dataSources, tfProviderSecurityServices.GetDataSources()...)
 	// Add ztna_connector_all package data sources
 	dataSources = append(dataSources, tfProviderZtnaConnectorAll.GetDataSources()...)
+	// Add dlp package data sources
+	dataSources = append(dataSources, tfProviderDlp.GetDataSources()...)
 	return dataSources
 }
 
@@ -291,6 +344,8 @@ func (p *ScmProvider) Resources(ctx context.Context) []func() resource.Resource 
 	resources = append(resources, tfProviderSecurityServices.GetResources()...)
 	// Add ztna_connector_all package resources
 	resources = append(resources, tfProviderZtnaConnectorAll.GetResources()...)
+	// Add dlp package resources
+	resources = append(resources, tfProviderDlp.GetResources()...)
 
 	return resources
 }
@@ -310,6 +365,8 @@ func (p *ScmProvider) Actions(_ context.Context) []func() action.Action {
 	actions = append(actions, tfProviderNetworkServices.GetActions()...)
 	// Add ztna_connector_all package actions
 	actions = append(actions, tfProviderZtnaConnectorAll.GetActions()...)
+	// Add dlp package actions
+	actions = append(actions, tfProviderDlp.GetActions()...)
 
 	return actions
 }
