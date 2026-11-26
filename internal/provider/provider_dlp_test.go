@@ -93,8 +93,6 @@ func TestDlpProviderRegistration(t *testing.T) {
 		"scm_dlp_syslog_profile_list",
 		"scm_dlp_forward_profile",
 		"scm_dlp_forward_profile_list",
-		"scm_dlp_config_export_job",
-		"scm_dlp_config_import_job",
 		"scm_dlp_dry_run_scan",
 	}
 
@@ -129,8 +127,6 @@ func TestDlpProviderRegistration(t *testing.T) {
 	}
 
 	expectedActions := []string{
-		"scm_dlp_config_export",
-		"scm_dlp_config_import",
 		"scm_dlp_dry_run_scan",
 	}
 	registeredActions := make(map[string]bool)

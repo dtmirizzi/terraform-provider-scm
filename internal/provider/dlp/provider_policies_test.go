@@ -30,7 +30,6 @@ type mockPoliciesBackend struct {
 	syslogProfiles   map[string]dlpclient.SyslogProfileDTO
 	forwardProfiles  map[string]dlpclient.ForwardProfileDTO
 	nextID           int
-	configExportHit  bool
 	dryRunScanHit    bool
 }
 
@@ -323,62 +322,7 @@ func setupPoliciesMockServer(b *mockPoliciesBackend) *httptest.Server {
 		}
 	})
 
-	// 5. Action: Configuration Export & Import
-	mux.HandleFunc("/v1/api/configuration/export", func(w http.ResponseWriter, r *http.Request) {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		b.configExportHit = true
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(dlpclient.ConfigurationJobResponse{
-			JobID:  "job-12345",
-			Status: "COMPLETED",
-		})
-	})
-
-	mux.HandleFunc("/v1/api/configuration/import", func(w http.ResponseWriter, r *http.Request) {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, "missing file part", http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-		_, _ = io.ReadAll(file)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"job_id": "imp-67890",
-			"status": "CONFLICT",
-		})
-	})
-
-	mux.HandleFunc("/v1/api/configuration/import/job/", func(w http.ResponseWriter, r *http.Request) {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"job_id": "imp-67890",
-			"status": "COMPLETED",
-			"action": r.URL.Query().Get("action"),
-		})
-	})
-
-	// 6. Action: Dry Run Scan
+	// 5. Action: Dry Run Scan
 	mux.HandleFunc("/v2/api/dry-run/scan", func(w http.ResponseWriter, r *http.Request) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
@@ -918,7 +862,7 @@ func TestPolicies_ForwardProfileCRUDAndList(t *testing.T) {
 }
 
 // ===========================================================================
-// Test: Terraform Actions (scm_dlp_config_export & scm_dlp_dry_run_scan)
+// Test: Terraform Actions (scm_dlp_dry_run_scan)
 // ===========================================================================
 
 func TestPolicies_Actions(t *testing.T) {
@@ -930,35 +874,7 @@ func TestPolicies_Actions(t *testing.T) {
 	provData := map[string]any{"dlp": client}
 	ctx := context.Background()
 
-	// 1. Config Export Action
-	exportAction := NewConfigExportAction().(*ConfigExportAction)
-	var exportConfigResp action.ConfigureResponse
-	exportAction.Configure(ctx, action.ConfigureRequest{ProviderData: (any)(provData)}, &exportConfigResp)
-	if exportConfigResp.Diagnostics.HasError() {
-		t.Fatalf("ConfigExport Configure failed: %v", exportConfigResp.Diagnostics)
-	}
-	if exportAction.client == nil {
-		t.Fatal("exportAction.client is nil after Configure")
-	}
-
-	exportData := ConfigExportActionModel{
-		ExportType: types.StringValue("JSON"),
-	}
-	var exportSchemaResp action.SchemaResponse
-	exportAction.Schema(ctx, action.SchemaRequest{}, &exportSchemaResp)
-	exportStateVal := tfsdk.State{Schema: exportSchemaResp.Schema}
-	exportStateVal.Set(ctx, &exportData)
-
-	var exportInvokeResp action.InvokeResponse
-	exportAction.Invoke(ctx, action.InvokeRequest{Config: tfsdk.Config(exportStateVal)}, &exportInvokeResp)
-	if exportInvokeResp.Diagnostics.HasError() {
-		t.Fatalf("ConfigExport Invoke failed: %v", exportInvokeResp.Diagnostics)
-	}
-	if !backend.configExportHit {
-		t.Fatal("Expected configuration export endpoint to be called")
-	}
-
-	// 2. Dry Run Scan Action
+	// 1. Dry Run Scan Action
 	scanAction := NewDryRunScanAction().(*DryRunScanAction)
 	var scanConfigResp action.ConfigureResponse
 	scanAction.Configure(ctx, action.ConfigureRequest{ProviderData: provData}, &scanConfigResp)
@@ -985,31 +901,7 @@ func TestPolicies_Actions(t *testing.T) {
 		t.Fatal("Expected dry run scan endpoint to be called")
 	}
 
-	// 3. Config Import Action (upload + conflict resolution)
-	importAction := NewConfigImportAction().(*ConfigImportAction)
-	var importConfigResp action.ConfigureResponse
-	importAction.Configure(ctx, action.ConfigureRequest{ProviderData: provData}, &importConfigResp)
-	if importConfigResp.Diagnostics.HasError() {
-		t.Fatalf("ConfigImport Configure failed: %v", importConfigResp.Diagnostics)
-	}
-
-	importData := ConfigImportActionModel{
-		FileContent:    types.StringValue(`{"profiles":[]}`),
-		FileName:       types.StringValue("export.json"),
-		ConflictAction: types.StringValue("CONTINUE"),
-	}
-	var importSchemaResp action.SchemaResponse
-	importAction.Schema(ctx, action.SchemaRequest{}, &importSchemaResp)
-	importStateVal := tfsdk.State{Schema: importSchemaResp.Schema}
-	importStateVal.Set(ctx, &importData)
-
-	var importInvokeResp action.InvokeResponse
-	importAction.Invoke(ctx, action.InvokeRequest{Config: tfsdk.Config(importStateVal)}, &importInvokeResp)
-	if importInvokeResp.Diagnostics.HasError() {
-		t.Fatalf("ConfigImport Invoke failed: %v", importInvokeResp.Diagnostics)
-	}
-
-	// 4. File Upload Path Validation (M9: reject /etc/passwd and ~/.ssh/*)
+	// 2. File Upload Path Validation (M9: reject /etc/passwd and ~/.ssh/*)
 	if _, _, err := readValidatedUploadFile("/etc/passwd"); err == nil {
 		t.Fatal("Expected readValidatedUploadFile to reject /etc/passwd")
 	}

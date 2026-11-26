@@ -308,10 +308,3 @@ type ForwardProfileDTO struct {
 	Enabled   bool                     `json:"enabled"`
 	Filter    *ForwardProfileFilterDTO `json:"filter,omitempty"`
 }
-
-type ConfigurationJobResponse struct {
-	JobID      string  `json:"job_id"`
-	Status     string  `json:"status"`
-	ExportType *string `json:"export_type,omitempty"`
-	URL        *string `json:"url,omitempty"`
-}

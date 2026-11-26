@@ -25,16 +25,12 @@ func getPoliciesDataSources() []func() datasource.DataSource {
 		NewSyslogProfileListDataSource,
 		NewForwardProfileDataSource,
 		NewForwardProfileListDataSource,
-		NewConfigExportJobDataSource,
-		NewConfigImportJobDataSource,
 		NewDryRunScanDataSource,
 	}
 }
 
 func getPoliciesActions() []func() action.Action {
 	return []func() action.Action{
-		NewConfigExportAction,
-		NewConfigImportAction,
 		NewDryRunScanAction,
 	}
 }
