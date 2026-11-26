@@ -36,6 +36,12 @@ jobs:
       - name: Build provider
         run: go build -o terraform-provider-scm
 
+      # Enterprise DLP: client unit tests plus Terraform-level create/update/
+      # import tests against in-process mock backends (no credentials needed;
+      # uses the terraform CLI installed above).
+      - name: DLP unit and Terraform-level tests
+        run: go test ./internal/dlpclient/... ./internal/provider/dlp/... ./internal/provider
+
       - name: Configure dev_overrides
         run: |
           printf 'provider_installation {\n  dev_overrides {\n    "paloaltonetworks-local/scm" = "%s"\n  }\n  direct {}\n}\n' "${{ github.workspace }}" > ~/.terraformrc
