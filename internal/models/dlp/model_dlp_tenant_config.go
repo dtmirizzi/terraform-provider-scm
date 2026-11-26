@@ -64,8 +64,7 @@ var DlpTenantConfigResourceSchema = rschema.Schema{
 			},
 		},
 		"incident_notification_enablement": rschema.BoolAttribute{
-			Description: "Enable incident notifications for the tenant.",
-			Optional:    true,
+			Description: "Whether incident notifications are enabled for the tenant. Read-only here; manage it with `scm_dlp_alert_settings`.",
 			Computed:    true,
 		},
 		"incident_notification_snippets_enablement": rschema.BoolAttribute{
@@ -74,12 +73,8 @@ var DlpTenantConfigResourceSchema = rschema.Schema{
 			Computed:    true,
 		},
 		"detection_exemption_period_minutes": rschema.Int64Attribute{
-			Description: "Alert detection exemption period in minutes (1 to 129600).",
-			Optional:    true,
+			Description: "Alert detection exemption period in minutes. Read-only here; manage it with `scm_dlp_alert_settings`.",
 			Computed:    true,
-			Validators: []validator.Int64{
-				int64validator.Between(1, 129600),
-			},
 		},
 		"enable_structured_data_clustering": rschema.BoolAttribute{
 			Description: "Enable structured data clustering for the tenant.",
@@ -110,12 +105,8 @@ var DlpTenantConfigResourceSchema = rschema.Schema{
 			Computed:    true,
 		},
 		"ocr_enablement": rschema.StringAttribute{
-			Description: "OCR enablement state for the tenant. Valid values: REQUESTED, ENABLED, DISABLED.",
-			Optional:    true,
+			Description: "OCR enablement state for the tenant. Read-only here; manage it per service with `scm_dlp_ocr_enablement`.",
 			Computed:    true,
-			Validators: []validator.String{
-				stringvalidator.OneOf("REQUESTED", "ENABLED", "DISABLED"),
-			},
 		},
 		"ocr_enablement_banner": rschema.BoolAttribute{
 			Description: "Whether OCR enablement banner is displayed.",

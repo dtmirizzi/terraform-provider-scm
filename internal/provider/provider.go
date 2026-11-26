@@ -168,28 +168,14 @@ func (p *ScmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		headers[hkey] = hval.ValueString()
 	}
 
-	authUrl := config.AuthUrl.ValueString()
-	if authUrl == "" && os.Getenv("SCM_AUTH_URL") == "" {
-		authUrl = strings.TrimSpace(os.Getenv("DLP_AUTH_URL"))
-	}
-	clientId := config.ClientId.ValueString()
-	if clientId == "" && os.Getenv("SCM_CLIENT_ID") == "" {
-		clientId = strings.TrimSpace(os.Getenv("DLP_CLIENT_ID"))
-	}
-	clientSecret := config.ClientSecret.ValueString()
-	if clientSecret == "" && os.Getenv("SCM_CLIENT_SECRET") == "" {
-		clientSecret = strings.TrimSpace(os.Getenv("DLP_CLIENT_SECRET"))
-	}
-	scope := config.Scope.ValueString()
-	if scope == "" && os.Getenv("SCM_SCOPE") == "" {
-		if tsgId := strings.TrimSpace(os.Getenv("DLP_TSG_ID")); tsgId != "" {
-			if strings.HasPrefix(tsgId, "tsg_id:") {
-				scope = tsgId
-			} else {
-				scope = "tsg_id:" + tsgId
-			}
-		}
-	}
+	authUrl, clientId, clientSecret, scope := applyDlpEnvFallback(
+		config.AuthUrl.ValueString(),
+		config.ClientId.ValueString(),
+		config.ClientSecret.ValueString(),
+		config.Scope.ValueString(),
+		config.AuthFile.ValueString(),
+		os.Getenv,
+	)
 	dlpHost := config.DlpHost.ValueString()
 
 	setupClient := &setup.Client{
@@ -364,4 +350,34 @@ func (p *ScmProvider) Actions(_ context.Context) []func() action.Action {
 	actions = append(actions, tfProviderDlp.GetActions()...)
 
 	return actions
+}
+
+// applyDlpEnvFallback lets the legacy DLP_AUTH_URL, DLP_CLIENT_ID,
+// DLP_CLIENT_SECRET and DLP_TSG_ID environment variables fill in credentials
+// that are not otherwise configured. They never take precedence over explicit
+// provider configuration, the matching SCM_* environment variable, or an
+// auth_file (whose values scm-go loads later, only for fields still empty).
+func applyDlpEnvFallback(authUrl, clientId, clientSecret, scope, authFile string, getenv func(string) string) (string, string, string, string) {
+	if authFile != "" {
+		return authUrl, clientId, clientSecret, scope
+	}
+	if authUrl == "" && getenv("SCM_AUTH_URL") == "" {
+		authUrl = strings.TrimSpace(getenv("DLP_AUTH_URL"))
+	}
+	if clientId == "" && getenv("SCM_CLIENT_ID") == "" {
+		clientId = strings.TrimSpace(getenv("DLP_CLIENT_ID"))
+	}
+	if clientSecret == "" && getenv("SCM_CLIENT_SECRET") == "" {
+		clientSecret = strings.TrimSpace(getenv("DLP_CLIENT_SECRET"))
+	}
+	if scope == "" && getenv("SCM_SCOPE") == "" {
+		if tsgId := strings.TrimSpace(getenv("DLP_TSG_ID")); tsgId != "" {
+			if strings.HasPrefix(tsgId, "tsg_id:") {
+				scope = tsgId
+			} else {
+				scope = "tsg_id:" + tsgId
+			}
+		}
+	}
+	return authUrl, clientId, clientSecret, scope
 }

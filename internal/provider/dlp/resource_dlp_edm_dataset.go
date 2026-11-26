@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -35,7 +34,7 @@ type EdmDatasetResource struct {
 }
 
 func (r *EdmDatasetResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_edm_dataset"
+	resp.TypeName = req.ProviderTypeName + "_dlp_edm_dataset"
 }
 
 func (r *EdmDatasetResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -47,8 +46,12 @@ func (r *EdmDatasetResource) Configure(ctx context.Context, req resource.Configu
 }
 
 func (r *EdmDatasetResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// Only id and name are user-settable. The computed field lists are unknown in
+	// the plan and cannot be decoded into the model's Go slices, so read the two
+	// attributes individually instead of the whole plan.
 	var plan models.EdmDatasetModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("id"), &plan.Id)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("name"), &plan.Name)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -90,7 +93,7 @@ func (r *EdmDatasetResource) Create(ctx context.Context, req resource.CreateRequ
 
 	tflog.Debug(ctx, "Adopting EDM Dataset into Terraform State", map[string]any{"id": targetID})
 	var dto dlpclient.EdmDatasetDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(targetID)), nil, &dto); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", dlpclient.EscapeID(targetID)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading EDM Dataset", err.Error())
 		return
 	}
@@ -117,7 +120,7 @@ func (r *EdmDatasetResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	tflog.Debug(ctx, "Reading DLP EDM Dataset", map[string]any{"id": id})
 	var dto dlpclient.EdmDatasetDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -140,7 +143,8 @@ func (r *EdmDatasetResource) Update(ctx context.Context, req resource.UpdateRequ
 	// Schema attributes for EDM dataset other than name are computed.
 	// We re-read dataset from backend to refresh state.
 	var plan models.EdmDatasetModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("id"), &plan.Id)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("tfid"), &plan.Tfid)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -156,7 +160,7 @@ func (r *EdmDatasetResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	tflog.Debug(ctx, "Refreshing DLP EDM Dataset", map[string]any{"id": id})
 	var dto dlpclient.EdmDatasetDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Refreshing DLP EDM Dataset", err.Error())
 		return
 	}
@@ -166,27 +170,15 @@ func (r *EdmDatasetResource) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 func (r *EdmDatasetResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// EDM datasets are created and indexed out-of-band with the EDM CLI; this
+	// resource only adopts an existing dataset. Destroying it therefore only
+	// removes it from Terraform state and never deletes the uploaded data.
 	var state models.EdmDatasetModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	id := state.Id.ValueString()
-	if id == "" {
-		id = state.Tfid.ValueString()
-	}
-	if id == "" {
-		return
-	}
-
-	tflog.Debug(ctx, "Deleting DLP EDM Dataset", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil); err != nil {
-		if !dlpclient.IsNotFound(err) {
-			resp.Diagnostics.AddError("Error Deleting DLP EDM Dataset", err.Error())
-			return
-		}
-	}
+	tflog.Info(ctx, "Removing DLP EDM Dataset from Terraform state; the dataset itself is not deleted", map[string]any{"id": state.Id.ValueString()})
 }
 
 func (r *EdmDatasetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -211,7 +203,7 @@ type EdmDatasetDataSource struct {
 }
 
 func (d *EdmDatasetDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_edm_dataset"
+	resp.TypeName = req.ProviderTypeName + "_dlp_edm_dataset"
 }
 
 func (d *EdmDatasetDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -236,7 +228,7 @@ func (d *EdmDatasetDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	var dto dlpclient.EdmDatasetDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP EDM Dataset", err.Error())
 		return
 	}
@@ -263,7 +255,7 @@ type EdmDatasetListDataSource struct {
 }
 
 func (d *EdmDatasetListDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_edm_dataset_list"
+	resp.TypeName = req.ProviderTypeName + "_dlp_edm_dataset_list"
 }
 
 func (d *EdmDatasetListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

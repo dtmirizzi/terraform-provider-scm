@@ -1,8 +1,10 @@
 package models
 
 import (
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -14,16 +16,16 @@ import (
 
 // EndpointPolicyModel represents the Terraform model for scm_dlp_endpoint_policy.
 type EndpointPolicyModel struct {
-	Tfid         types.String `tfsdk:"tfid"`
-	Id           types.String `tfsdk:"id"`
-	Name         types.String `tfsdk:"name"`
-	Description  types.String `tfsdk:"description"`
-	Enabled      types.Bool   `tfsdk:"enabled"`
-	Type         types.String `tfsdk:"type"`
-	Severity     types.String `tfsdk:"severity"`
-	Priority     types.Int64  `tfsdk:"priority"`
-	ScopeJson    types.String `tfsdk:"scope_json"`
-	ResponseJson types.String `tfsdk:"response_json"`
+	Tfid         types.String         `tfsdk:"tfid"`
+	Id           types.String         `tfsdk:"id"`
+	Name         types.String         `tfsdk:"name"`
+	Description  types.String         `tfsdk:"description"`
+	Enabled      types.Bool           `tfsdk:"enabled"`
+	Type         types.String         `tfsdk:"type"`
+	Severity     types.String         `tfsdk:"severity"`
+	Priority     types.Int64          `tfsdk:"priority"`
+	ScopeJson    jsontypes.Normalized `tfsdk:"scope_json"`
+	ResponseJson jsontypes.Normalized `tfsdk:"response_json"`
 }
 
 // EndpointPolicyListModel represents the data source model for scm_dlp_endpoint_policy_list.
@@ -73,13 +75,18 @@ var EndpointPolicyResourceSchema = rschema.Schema{
 		"priority": rschema.Int64Attribute{
 			Optional:    true,
 			Computed:    true,
-			Description: "Priority order of the endpoint policy.",
+			Description: "Priority order of the endpoint policy. Assigned by the backend when omitted.",
+			PlanModifiers: []planmodifier.Int64{
+				int64planmodifier.UseStateForUnknown(),
+			},
 		},
 		"scope_json": rschema.StringAttribute{
+			CustomType:  jsontypes.NormalizedType{},
 			Required:    true,
 			Description: "JSON object representing the policy scope.",
 		},
 		"response_json": rschema.StringAttribute{
+			CustomType:  jsontypes.NormalizedType{},
 			Required:    true,
 			Description: "JSON object representing the policy response/action.",
 		},
@@ -122,10 +129,12 @@ var EndpointPolicyDataSourceSchema = dsschema.Schema{
 			Description: "Priority order of the endpoint policy.",
 		},
 		"scope_json": dsschema.StringAttribute{
+			CustomType:  jsontypes.NormalizedType{},
 			Computed:    true,
 			Description: "JSON object representing the policy scope.",
 		},
 		"response_json": dsschema.StringAttribute{
+			CustomType:  jsontypes.NormalizedType{},
 			Computed:    true,
 			Description: "JSON object representing the policy response/action.",
 		},
@@ -177,10 +186,12 @@ var EndpointPolicyListDataSourceSchema = dsschema.Schema{
 						Description: "Priority order of the endpoint policy.",
 					},
 					"scope_json": dsschema.StringAttribute{
+						CustomType:  jsontypes.NormalizedType{},
 						Computed:    true,
 						Description: "JSON object representing the policy scope.",
 					},
 					"response_json": dsschema.StringAttribute{
+						CustomType:  jsontypes.NormalizedType{},
 						Computed:    true,
 						Description: "JSON object representing the policy response/action.",
 					},

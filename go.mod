@@ -13,6 +13,8 @@ require (
 	github.com/paloaltonetworks/scm-go v1.0.13
 )
 
+require github.com/hashicorp/terraform-plugin-framework-jsontypes v0.2.0 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/Kunde21/markdownfmt/v3 v3.1.0 // indirect

@@ -323,6 +323,13 @@ func BuildDictionaryUpdateParts(dict *DictionaryDTO, keywordList []string) ([]Mu
 	cleaned := make([]string, 0, len(keywordList))
 	for i, raw := range keywordList {
 		kw := strings.TrimSpace(raw)
+		if kw != raw {
+			// Rejected rather than silently trimmed: trimming would make the
+			// stored value differ from configuration and break Terraform's
+			// plan/apply consistency check.
+			errs = append(errs, fmt.Sprintf("keyword_list[%d] (%q) must not have leading or trailing whitespace", i, raw))
+			continue
+		}
 		length := utf8.RuneCountInString(kw)
 		minLen := 3
 		if isShortKeywordScript(kw) {
@@ -334,7 +341,7 @@ func BuildDictionaryUpdateParts(dict *DictionaryDTO, keywordList []string) ([]Mu
 		case isCSV && strings.Contains(kw, ","):
 			errs = append(errs, fmt.Sprintf("keyword_list[%d] contains a comma, which CSV uploads reject", i))
 		case length < minLen || length > MaxKeywordLength:
-			errs = append(errs, fmt.Sprintf("keyword_list[%d] must be %d-%d characters after trimming (has %d)", i, minLen, MaxKeywordLength, length))
+			errs = append(errs, fmt.Sprintf("keyword_list[%d] must be %d-%d characters (has %d)", i, minLen, MaxKeywordLength, length))
 		}
 		cleaned = append(cleaned, kw)
 	}

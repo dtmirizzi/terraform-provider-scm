@@ -1,10 +1,17 @@
 package models
 
 import (
+	"context"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"regexp"
+
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -467,7 +474,15 @@ var DictionaryResourceSchema = schema.Schema{
 			ElementType:         types.StringType,
 			Optional:            true,
 			Computed:            true,
-			MarkdownDescription: "List of keywords belonging to this dictionary.",
+			MarkdownDescription: "List of keywords belonging to this dictionary. When omitted, the existing keywords are kept on update. Keywords must not have leading or trailing whitespace.",
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
+			Validators: []validator.List{
+				listvalidator.ValueStringsAre(
+					stringvalidator.RegexMatches(regexp.MustCompile(`^\S(.*\S)?$`), "must not be empty or have leading or trailing whitespace"),
+				),
+			},
 		},
 		"keyword_count": schema.Int64Attribute{
 			Computed:            true,
@@ -837,7 +852,7 @@ type EdmDatasetListModel struct {
 
 // EdmDatasetResourceSchema defines the schema for scm_dlp_edm_dataset resource.
 var EdmDatasetResourceSchema = schema.Schema{
-	MarkdownDescription: "Manages or adopts an Enterprise DLP Exact Data Match (EDM) Dataset. EDM datasets are indexed via the EDM CLI; this resource allows adopting an existing dataset into Terraform state and managing its lifecycle.",
+	MarkdownDescription: "Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: `terraform destroy` only removes it from state.",
 	Attributes: map[string]schema.Attribute{
 		"tfid": schema.StringAttribute{
 			Computed:            true,
@@ -849,9 +864,13 @@ var EdmDatasetResourceSchema = schema.Schema{
 		"id": schema.StringAttribute{
 			Optional:            true,
 			Computed:            true,
-			MarkdownDescription: "The unique identifier of the EDM dataset. If provided, the existing dataset is adopted into state.",
+			MarkdownDescription: "The unique identifier of the EDM dataset. If provided, the existing dataset is adopted into state; otherwise it is looked up by `name`.",
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.UseStateForUnknown(),
+				stringplanmodifier.RequiresReplaceIf(func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+					// Re-adopt when the user points at a different dataset; ignore id becoming computed.
+					resp.RequiresReplace = !req.ConfigValue.IsNull() && !req.ConfigValue.IsUnknown() && !req.StateValue.IsNull() && req.ConfigValue.ValueString() != req.StateValue.ValueString()
+				}, "Adopting a different EDM dataset requires replacement.", "Adopting a different EDM dataset requires replacement."),
 			},
 		},
 		"name": schema.StringAttribute{

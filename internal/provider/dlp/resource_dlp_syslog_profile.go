@@ -33,8 +33,8 @@ type SyslogProfileResource struct {
 	client *dlpclient.Client
 }
 
-func (r *SyslogProfileResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_syslog_profile"
+func (r *SyslogProfileResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_syslog_profile"
 }
 
 func (r *SyslogProfileResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -204,8 +204,8 @@ type SyslogProfileDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *SyslogProfileDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_syslog_profile"
+func (d *SyslogProfileDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_syslog_profile"
 }
 
 func (d *SyslogProfileDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -261,8 +261,8 @@ type SyslogProfileListDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *SyslogProfileListDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_syslog_profile_list"
+func (d *SyslogProfileListDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_syslog_profile_list"
 }
 
 func (d *SyslogProfileListDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

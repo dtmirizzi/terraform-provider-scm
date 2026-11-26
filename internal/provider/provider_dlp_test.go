@@ -153,3 +153,54 @@ func TestDlpProviderRegistration(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyDlpEnvFallback(t *testing.T) {
+	env := func(m map[string]string) func(string) string {
+		return func(k string) string { return m[k] }
+	}
+	dlpEnv := map[string]string{
+		"DLP_AUTH_URL":      "https://dlp-auth.example",
+		"DLP_CLIENT_ID":     "dlp-id",
+		"DLP_CLIENT_SECRET": "dlp-secret",
+		"DLP_TSG_ID":        "123",
+	}
+
+	t.Run("fills empty values from DLP_* env", func(t *testing.T) {
+		a, id, sec, sc := applyDlpEnvFallback("", "", "", "", "", env(dlpEnv))
+		if a != "https://dlp-auth.example" || id != "dlp-id" || sec != "dlp-secret" || sc != "tsg_id:123" {
+			t.Fatalf("unexpected values: %q %q %q %q", a, id, sec, sc)
+		}
+	})
+
+	t.Run("explicit config wins", func(t *testing.T) {
+		a, id, sec, sc := applyDlpEnvFallback("https://cfg", "cfg-id", "cfg-secret", "tsg_id:9", "", env(dlpEnv))
+		if a != "https://cfg" || id != "cfg-id" || sec != "cfg-secret" || sc != "tsg_id:9" {
+			t.Fatalf("config was overridden: %q %q %q %q", a, id, sec, sc)
+		}
+	})
+
+	t.Run("SCM_* env wins", func(t *testing.T) {
+		m := map[string]string{"SCM_AUTH_URL": "x", "SCM_CLIENT_ID": "x", "SCM_CLIENT_SECRET": "x", "SCM_SCOPE": "x"}
+		for k, v := range dlpEnv {
+			m[k] = v
+		}
+		a, id, sec, sc := applyDlpEnvFallback("", "", "", "", "", env(m))
+		if a != "" || id != "" || sec != "" || sc != "" {
+			t.Fatalf("DLP_* env overrode SCM_* env: %q %q %q %q", a, id, sec, sc)
+		}
+	})
+
+	t.Run("auth_file wins", func(t *testing.T) {
+		a, id, sec, sc := applyDlpEnvFallback("", "", "", "", "/path/to/auth.json", env(dlpEnv))
+		if a != "" || id != "" || sec != "" || sc != "" {
+			t.Fatalf("DLP_* env overrode auth_file: %q %q %q %q", a, id, sec, sc)
+		}
+	})
+
+	t.Run("tsg_id prefix is not doubled", func(t *testing.T) {
+		_, _, _, sc := applyDlpEnvFallback("", "", "", "", "", env(map[string]string{"DLP_TSG_ID": "tsg_id:42"}))
+		if sc != "tsg_id:42" {
+			t.Fatalf("got %q", sc)
+		}
+	})
+}

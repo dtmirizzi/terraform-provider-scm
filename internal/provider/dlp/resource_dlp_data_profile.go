@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"reflect"
 	"strings"
 
@@ -126,7 +125,7 @@ func (r *dataProfileResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	var dto dlpclient.DataProfileDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -168,8 +167,15 @@ func (r *dataProfileResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	dto.ID = &id
-	if !plan.Version.IsNull() && !plan.Version.IsUnknown() {
-		v := plan.Version.ValueInt64()
+	// Send the last version we observed (from state); the plan value is unknown
+	// because the backend bumps the version on every update.
+	var priorState models.DataProfileResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &priorState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !priorState.Version.IsNull() && !priorState.Version.IsUnknown() {
+		v := priorState.Version.ValueInt64()
 		dto.Version = &v
 	}
 
@@ -181,7 +187,7 @@ func (r *dataProfileResource) Update(ctx context.Context, req resource.UpdateReq
 	tflog.Debug(ctx, "Updating DLP Data Profile", map[string]interface{}{"id": id, "name": dto.Name})
 
 	var updated dlpclient.DataProfileDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Failed to update DLP data profile", err.Error())
 		return
 	}
@@ -218,14 +224,14 @@ func (r *dataProfileResource) Delete(ctx context.Context, req resource.DeleteReq
 	}, nil)
 
 	// 2) Call DELETE /v2/api/data-profiles/{id} and if that fails (and is not 404), return a diagnostic error.
-	err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil)
+	err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", dlpclient.EscapeID(id)), nil)
 	if err != nil && !dlpclient.IsNotFound(err) {
 		resp.Diagnostics.AddError("Failed to delete DLP data profile", err.Error())
 		return
 	}
 
 	// Also call DELETE /v1/api/data-profiles/{id} as a best-effort cleanup.
-	_ = r.client.Delete(ctx, fmt.Sprintf("/v1/api/data-profiles/%s", url.PathEscape(id)), nil)
+	_ = r.client.Delete(ctx, fmt.Sprintf("/v1/api/data-profiles/%s", dlpclient.EscapeID(id)), nil)
 }
 
 func (r *dataProfileResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -273,7 +279,7 @@ func (d *dataProfileDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	var dto dlpclient.DataProfileDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Failed to fetch DLP data profile", err.Error())
 		return
 	}

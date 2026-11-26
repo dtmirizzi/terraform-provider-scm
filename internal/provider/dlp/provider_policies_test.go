@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -456,8 +457,8 @@ func TestPolicies_EndpointPolicyCRUDAndList(t *testing.T) {
 		Type:         types.StringValue("endpoint_peripheral_control"),
 		Severity:     types.StringValue("high"),
 		Priority:     types.Int64Value(1),
-		ScopeJson:    types.StringValue(scopeJSON),
-		ResponseJson: types.StringValue(respJSON),
+		ScopeJson:    jsontypes.NewNormalizedValue(scopeJSON),
+		ResponseJson: jsontypes.NewNormalizedValue(respJSON),
 	}
 
 	planVal := tfsdk.Plan{Schema: models.EndpointPolicyResourceSchema}

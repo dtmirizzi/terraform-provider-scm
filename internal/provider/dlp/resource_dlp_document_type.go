@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -36,7 +35,7 @@ type DocumentTypeResource struct {
 }
 
 func (r *DocumentTypeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_document_type"
+	resp.TypeName = req.ProviderTypeName + "_dlp_document_type"
 }
 
 func (r *DocumentTypeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -108,7 +107,7 @@ func (r *DocumentTypeResource) Read(ctx context.Context, req resource.ReadReques
 
 	tflog.Debug(ctx, "Reading DLP Document Type", map[string]any{"id": id})
 	var dto dlpclient.DocumentTypeDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -149,7 +148,7 @@ func (r *DocumentTypeResource) Update(ctx context.Context, req resource.UpdateRe
 
 	tflog.Debug(ctx, "Updating DLP Document Type", map[string]any{"id": id})
 	var updated dlpclient.DocumentTypeDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/document-types/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Document Type", err.Error())
 		return
 	}
@@ -174,7 +173,7 @@ func (r *DocumentTypeResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Document Type", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/document-types/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Document Type", err.Error())
 			return
@@ -204,7 +203,7 @@ type DocumentTypeDataSource struct {
 }
 
 func (d *DocumentTypeDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_document_type"
+	resp.TypeName = req.ProviderTypeName + "_dlp_document_type"
 }
 
 func (d *DocumentTypeDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -229,7 +228,7 @@ func (d *DocumentTypeDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	var dto dlpclient.DocumentTypeDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Document Type", err.Error())
 		return
 	}
@@ -256,7 +255,7 @@ type DocumentTypeListDataSource struct {
 }
 
 func (d *DocumentTypeListDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_document_type_list"
+	resp.TypeName = req.ProviderTypeName + "_dlp_document_type_list"
 }
 
 func (d *DocumentTypeListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

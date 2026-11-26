@@ -33,8 +33,8 @@ type ForwardProfileResource struct {
 	client *dlpclient.Client
 }
 
-func (r *ForwardProfileResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_forward_profile"
+func (r *ForwardProfileResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_forward_profile"
 }
 
 func (r *ForwardProfileResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -204,8 +204,8 @@ type ForwardProfileDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *ForwardProfileDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_forward_profile"
+func (d *ForwardProfileDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_forward_profile"
 }
 
 func (d *ForwardProfileDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -261,8 +261,8 @@ type ForwardProfileListDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *ForwardProfileListDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_forward_profile_list"
+func (d *ForwardProfileListDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_forward_profile_list"
 }
 
 func (d *ForwardProfileListDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

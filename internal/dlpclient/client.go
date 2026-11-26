@@ -35,13 +35,11 @@ const (
 
 var validResourceIDRe = regexp.MustCompile(`^[A-Za-z0-9._~:-]{1,128}$`)
 
-// EscapeID validates and URL-escapes a resource identifier for safe path interpolation (DLP-003).
+// EscapeID URL-escapes a resource identifier for safe interpolation into a
+// request path, so IDs containing '/', '?', '#' or '..' cannot change the target
+// endpoint (DLP-003). Use ValidateResourceID to reject such IDs outright.
 func EscapeID(id string) string {
-	trimmed := strings.TrimSpace(id)
-	if trimmed == "" || trimmed == "." || trimmed == ".." || strings.ContainsAny(trimmed, "/\\?#%") || !validResourceIDRe.MatchString(trimmed) {
-		return url.PathEscape(trimmed)
-	}
-	return url.PathEscape(trimmed)
+	return url.PathEscape(strings.TrimSpace(id))
 }
 
 // ValidateResourceID checks that a resource ID does not contain path traversal or query/fragment characters.
