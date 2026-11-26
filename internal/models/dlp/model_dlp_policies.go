@@ -441,7 +441,8 @@ var SyslogProfileResourceSchema = rschema.Schema{
 		"cert": rschema.StringAttribute{
 			Optional:    true,
 			Computed:    true,
-			Description: "Certificate content for secure connection.",
+			Sensitive:   true,
+			Description: "Certificate content for secure (TLS) syslog connections. Marked sensitive so it is not shown in plan output.",
 		},
 	},
 }
@@ -483,6 +484,7 @@ var SyslogProfileDataSourceSchema = dsschema.Schema{
 		},
 		"cert": dsschema.StringAttribute{
 			Computed:    true,
+			Sensitive:   true,
 			Description: "Certificate content for secure connection.",
 		},
 	},
@@ -534,6 +536,7 @@ var SyslogProfileListDataSourceSchema = dsschema.Schema{
 					},
 					"cert": dsschema.StringAttribute{
 						Computed:    true,
+						Sensitive:   true,
 						Description: "Certificate content for secure connection.",
 					},
 				},

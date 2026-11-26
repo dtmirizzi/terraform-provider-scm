@@ -63,7 +63,7 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	body := e.ResponseBody
+	body := RedactBody(e.ResponseBody)
 	if len(body) > MaxErrorResponseLength {
 		body = body[:MaxErrorResponseLength] + "...(truncated)"
 	}
@@ -608,4 +608,62 @@ func GetAll[T any](
 	}
 
 	return all, nil
+}
+
+// sensitiveFieldFragments are case-insensitive fragments of JSON field names
+// whose values are masked before a response body is surfaced in an error or
+// log (CWE-532). Mirrors the SCM provider's HTTP log redaction and adds
+// DLP-specific fields such as syslog certificates.
+var sensitiveFieldFragments = []string{
+	"passphrase", "password", "passwd", "secret", "token", "credential",
+	"private", "psk", "pre_shared", "preshared", "authorization", "cookie",
+	"api_key", "apikey", "auth_key", "jwt", "cert",
+}
+
+func isSensitiveField(name string) bool {
+	n := strings.ToLower(name)
+	if strings.HasSuffix(n, "key") {
+		return true
+	}
+	for _, frag := range sensitiveFieldFragments {
+		if strings.Contains(n, frag) {
+			return true
+		}
+	}
+	return false
+}
+
+func redactValue(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			if isSensitiveField(k) {
+				t[k] = "****"
+			} else {
+				t[k] = redactValue(val)
+			}
+		}
+	case []any:
+		for i, val := range t {
+			t[i] = redactValue(val)
+		}
+	}
+	return v
+}
+
+// RedactBody masks secret-like fields in a JSON body. Non-JSON bodies are
+// returned unchanged (DLP error bodies are typically short plain-text or JSON
+// error messages); callers still truncate them.
+func RedactBody(body string) string {
+	dec := json.NewDecoder(strings.NewReader(body))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return body
+	}
+	out, err := json.Marshal(redactValue(v))
+	if err != nil {
+		return body
+	}
+	return string(out)
 }
