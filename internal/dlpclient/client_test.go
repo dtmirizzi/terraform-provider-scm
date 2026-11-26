@@ -261,3 +261,24 @@ func TestSecurityHardening(t *testing.T) {
 		t.Errorf("expected Authorization header to be stripped on cross-origin redirect, got %q", redirectSeenAuth)
 	}
 }
+
+func TestAPIErrorRedactsSecrets(t *testing.T) {
+	e := &APIError{
+		Method:       "PUT",
+		URL:          "https://dlp.example/v1/api/syslog/1",
+		StatusCode:   400,
+		ResponseBody: `{"message":"bad cert","details":{"cert":"-----BEGIN CERTIFICATE-----","client_secret":"s3cr3t","name":"ok"}}`,
+	}
+	msg := e.Error()
+	for _, leaked := range []string{"BEGIN CERTIFICATE", "s3cr3t"} {
+		if strings.Contains(msg, leaked) {
+			t.Fatalf("error message leaked %q: %s", leaked, msg)
+		}
+	}
+	if !strings.Contains(msg, `"name":"ok"`) || !strings.Contains(msg, "bad cert") {
+		t.Fatalf("non-sensitive fields should be preserved: %s", msg)
+	}
+	if got := RedactBody("plain text failure"); got != "plain text failure" {
+		t.Fatalf("non-JSON body should pass through, got %q", got)
+	}
+}
