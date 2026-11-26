@@ -84,8 +84,8 @@ func NormalizeAndValidateDataProfile(profile *DataProfileDTO) ([]string, error) 
 
 	if strings.TrimSpace(profile.Name) == "" {
 		errs = append(errs, "'name' is required and must not be blank")
-	} else if len(profile.Name) > 64 {
-		errs = append(errs, fmt.Sprintf("'name' must be at most 64 characters (got %d)", len(profile.Name)))
+	} else if utf8.RuneCountInString(profile.Name) > 64 {
+		errs = append(errs, fmt.Sprintf("'name' must be at most 64 characters (got %d)", utf8.RuneCountInString(profile.Name)))
 	}
 
 	if len(profile.DetectionRules) == 0 {
@@ -241,8 +241,8 @@ func ValidateDataPattern(pattern *DataPatternDTO) ([]string, error) {
 	var errs []string
 	if strings.TrimSpace(pattern.Name) == "" {
 		errs = append(errs, "'name' is required")
-	} else if len(pattern.Name) > 64 {
-		errs = append(errs, fmt.Sprintf("'name' must be at most 64 characters (got %d)", len(pattern.Name)))
+	} else if utf8.RuneCountInString(pattern.Name) > 64 {
+		errs = append(errs, fmt.Sprintf("'name' must be at most 64 characters (got %d)", utf8.RuneCountInString(pattern.Name)))
 	}
 	if !slices.Contains(PatternTypes, pattern.Type) {
 		errs = append(errs, fmt.Sprintf("'type' must be one of: %s (got: %q)", strings.Join(PatternTypes, ", "), pattern.Type))

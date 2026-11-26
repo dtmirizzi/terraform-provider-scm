@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,14 +23,38 @@ import (
 )
 
 const (
-	DefaultDLPHost        = "api.dlp.paloaltonetworks.com"
-	DefaultServiceName    = "prisma-access"
-	DefaultClientName     = "terraform-provider-scm"
-	DefaultMaxRetries     = 3
-	DefaultRetryDelay     = 1000 * time.Millisecond
-	DefaultMaxRetryAfter  = 60 * time.Second
-	DefaultRequestTimeout = 60 * time.Second
+	DefaultDLPHost         = "api.dlp.paloaltonetworks.com"
+	DefaultServiceName     = "prisma-access"
+	DefaultClientName      = "terraform-provider-scm"
+	DefaultMaxRetries      = 3
+	DefaultRetryDelay      = 1000 * time.Millisecond
+	DefaultMaxRetryAfter   = 60 * time.Second
+	DefaultRequestTimeout  = 60 * time.Second
+	MaxErrorResponseLength = 4096
 )
+
+var validResourceIDRe = regexp.MustCompile(`^[A-Za-z0-9._~:-]{1,128}$`)
+
+// EscapeID validates and URL-escapes a resource identifier for safe path interpolation (DLP-003).
+func EscapeID(id string) string {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" || trimmed == "." || trimmed == ".." || strings.ContainsAny(trimmed, "/\\?#%") || !validResourceIDRe.MatchString(trimmed) {
+		return url.PathEscape(trimmed)
+	}
+	return url.PathEscape(trimmed)
+}
+
+// ValidateResourceID checks that a resource ID does not contain path traversal or query/fragment characters.
+func ValidateResourceID(id string) error {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" {
+		return errors.New("resource ID must not be empty")
+	}
+	if trimmed == "." || trimmed == ".." || strings.ContainsAny(trimmed, "/\\?#%") || !validResourceIDRe.MatchString(trimmed) {
+		return fmt.Errorf("invalid resource ID %q", id)
+	}
+	return nil
+}
 
 // APIError represents an error returned by the Enterprise DLP API.
 type APIError struct {
@@ -38,12 +65,17 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("DLP API %s %s failed (%d): %s", e.Method, e.URL, e.StatusCode, e.ResponseBody)
+	body := e.ResponseBody
+	if len(body) > MaxErrorResponseLength {
+		body = body[:MaxErrorResponseLength] + "...(truncated)"
+	}
+	return fmt.Sprintf("DLP API %s %s failed (%d): %s", e.Method, e.URL, e.StatusCode, body)
 }
 
 // IsNotFound returns true if the error is an HTTP 404 Not Found.
 func IsNotFound(err error) bool {
-	if apiErr, ok := err.(*APIError); ok {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
 		return apiErr.StatusCode == http.StatusNotFound
 	}
 	return false
@@ -126,10 +158,30 @@ func NewClient(cfg Config) *Client {
 
 	httpClient := cfg.HttpClient
 	if httpClient == nil && cfg.SetupClient != nil && cfg.SetupClient.HttpClient != nil {
-		httpClient = cfg.SetupClient.HttpClient
+		// Clone the http.Client so we can attach redirect protection and default timeout without mutating SetupClient.HttpClient
+		cloned := *cfg.SetupClient.HttpClient
+		httpClient = &cloned
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: DefaultRequestTimeout}
+	} else {
+		cloned := *httpClient
+		if cloned.Timeout == 0 {
+			cloned.Timeout = DefaultRequestTimeout
+		}
+		baseParsed, _ := url.Parse(baseURL)
+		cloned.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			// Never forward Authorization or session headers across origins (DLP-002)
+			if baseParsed != nil && (!strings.EqualFold(req.URL.Scheme, baseParsed.Scheme) || !strings.EqualFold(req.URL.Host, baseParsed.Host)) {
+				req.Header.Del("Authorization")
+				req.Header.Del("x-auth-jwt")
+			}
+			return nil
+		}
+		httpClient = &cloned
 	}
 
 	userAgent := cfg.UserAgent
@@ -152,16 +204,19 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-func (c *Client) getToken(ctx context.Context) (string, error) {
+func (c *Client) getToken(ctx context.Context, forceRefresh bool) (string, error) {
 	if c.SetupClient == nil {
 		return "", nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.SetupClient.Jwt == "" || (!c.SetupClient.JwtExpiresAt.IsZero() && time.Now().After(c.SetupClient.JwtExpiresAt)) {
+	if forceRefresh || c.SetupClient.Jwt == "" || (!c.SetupClient.JwtExpiresAt.IsZero() && time.Now().After(c.SetupClient.JwtExpiresAt)) {
 		if err := c.SetupClient.RefreshJwt(ctx); err != nil {
 			return "", fmt.Errorf("failed to refresh SASE JWT: %w", err)
 		}
+	}
+	if c.SetupClient.Jwt == "" {
+		return "", errors.New("SASE JWT token is empty after authentication")
 	}
 	return c.SetupClient.Jwt, nil
 }
@@ -169,6 +224,11 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 func (c *Client) buildURL(path string, params map[string]string) (string, error) {
 	var rawURL string
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		baseParsed, baseErr := url.Parse(c.BaseURL)
+		targetParsed, targetErr := url.Parse(path)
+		if baseErr != nil || targetErr != nil || !strings.EqualFold(baseParsed.Scheme, targetParsed.Scheme) || !strings.EqualFold(baseParsed.Host, targetParsed.Host) {
+			return "", fmt.Errorf("refusing to send authenticated DLP request to external origin %q", path)
+		}
 		rawURL = path
 	} else {
 		if !strings.HasPrefix(path, "/") {
@@ -238,11 +298,15 @@ func (c *Client) DoMultipart(ctx context.Context, method, path string, params ma
 
 	for _, part := range parts {
 		h := make(textproto.MIMEHeader)
+		dispParams := map[string]string{"name": part.FieldName}
 		if part.FileName != "" {
-			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, part.FieldName, part.FileName))
-		} else {
-			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"`, part.FieldName))
+			dispParams["filename"] = part.FileName
 		}
+		disp := mime.FormatMediaType("form-data", dispParams)
+		if disp == "" {
+			return fmt.Errorf("invalid multipart field or file name %q / %q", part.FieldName, part.FileName)
+		}
+		h.Set("Content-Disposition", disp)
 		if part.ContentType != "" {
 			h.Set("Content-Type", part.ContentType)
 		}
@@ -281,9 +345,22 @@ func (c *Client) doWithRetry(
 		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
+	reqCtx := ctx
+	var cancel context.CancelFunc
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		reqCtx, cancel = context.WithTimeout(ctx, DefaultRequestTimeout)
+		defer cancel()
+	}
+
+	req, err := http.NewRequestWithContext(reqCtx, method, fullURL, bodyReader)
 	if err != nil {
 		return err
+	}
+
+	if c.SetupClient != nil && len(c.SetupClient.Headers) > 0 {
+		for k, v := range c.SetupClient.Headers {
+			req.Header.Set(k, v)
+		}
 	}
 
 	req.Header.Set("Accept", "application/json")
@@ -298,18 +375,12 @@ func (c *Client) doWithRetry(
 		req.Header.Set("Content-Type", contentType)
 	}
 
-	token, err := c.getToken(ctx)
+	token, err := c.getToken(reqCtx, false)
 	if err != nil {
 		return err
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	if c.SetupClient != nil && len(c.SetupClient.Headers) > 0 {
-		for k, v := range c.SetupClient.Headers {
-			req.Header.Set(k, v)
-		}
 	}
 
 	resp, err := c.HttpClient.Do(req)
@@ -323,30 +394,39 @@ func (c *Client) doWithRetry(
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusTooManyRequests && attempt < c.MaxRetries {
+	if resp.StatusCode == http.StatusUnauthorized && c.SetupClient != nil && attempt == 0 {
+		if _, refreshErr := c.getToken(reqCtx, true); refreshErr == nil {
+			return c.doWithRetry(ctx, method, path, params, contentType, bodyBytes, out, attempt+1)
+		}
+	}
+
+	isIdempotent := method == http.MethodGet || method == http.MethodPut || method == http.MethodDelete
+	shouldRetry5xx := isIdempotent && (resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusGatewayTimeout)
+	if (resp.StatusCode == http.StatusTooManyRequests || shouldRetry5xx) && attempt < c.MaxRetries {
 		delay := c.RetryDelay * time.Duration(1<<attempt)
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 			if secs, parseErr := strconv.Atoi(retryAfter); parseErr == nil && secs > 0 {
 				delay = time.Duration(secs) * time.Second
+			} else if retryTime, httpErr := http.ParseTime(retryAfter); httpErr == nil {
+				if d := time.Until(retryTime); d > 0 {
+					delay = d
+				}
 			}
 		}
 		if delay > DefaultMaxRetryAfter {
 			delay = DefaultMaxRetryAfter
 		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-time.After(delay):
+		case <-timer.C:
 			return c.doWithRetry(ctx, method, path, params, contentType, bodyBytes, out, attempt+1)
 		}
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusUnauthorized && c.SetupClient != nil {
-			c.mu.Lock()
-			c.SetupClient.Jwt = ""
-			c.mu.Unlock()
-		}
 		return &APIError{
 			Method:       method,
 			URL:          fullURL,
@@ -373,20 +453,29 @@ const (
 	PaginationOneBased  PaginationStyle = "one"
 )
 
+type PaginatedPageMeta struct {
+	Size          *int `json:"size"`
+	Number        *int `json:"number"`
+	TotalElements *int `json:"total_elements"`
+	TotalPages    *int `json:"total_pages"`
+}
+
 // PaginatedEnvelope captures both 0-based and 1-based paginated responses from DLP APIs.
 type PaginatedEnvelope[T any] struct {
-	Content          []T   `json:"content"`
-	Items            []T   `json:"items"`
-	Data             []T   `json:"data"`
-	Resources        []T   `json:"resources"`
-	TotalPages       *int  `json:"totalPages"`
-	TotalPagesSnake  *int  `json:"total_pages"`
-	TotalElements    *int  `json:"totalElements"`
-	TotalElemSnake   *int  `json:"total_elements"`
-	Total            *int  `json:"total"`
-	Last             *bool `json:"last"`
-	Size             *int  `json:"size"`
-	NumberOfElements *int  `json:"numberOfElements"`
+	Content             []T                `json:"content"`
+	Items               []T                `json:"items"`
+	Data                []T                `json:"data"`
+	Resources           []T                `json:"resources"`
+	Page                *PaginatedPageMeta `json:"page"`
+	TotalPages          *int               `json:"totalPages"`
+	TotalPagesSnake     *int               `json:"total_pages"`
+	TotalElements       *int               `json:"totalElements"`
+	TotalElemSnake      *int               `json:"total_elements"`
+	Total               *int               `json:"total"`
+	Last                *bool              `json:"last"`
+	Size                *int               `json:"size"`
+	NumberOfElements    *int               `json:"numberOfElements"`
+	NumberOfElementsSnk *int               `json:"number_of_elements"`
 }
 
 // GetAll auto-paginates a GET endpoint returning a slice of items T.
@@ -475,6 +564,9 @@ func GetAll[T any](
 		if totalPages == nil {
 			totalPages = env.TotalPagesSnake
 		}
+		if totalPages == nil && env.Page != nil {
+			totalPages = env.Page.TotalPages
+		}
 		if totalPages != nil {
 			limit := *totalPages
 			if style == PaginationZeroBased {
@@ -492,6 +584,9 @@ func GetAll[T any](
 		if totalElements == nil {
 			totalElements = env.Total
 		}
+		if totalElements == nil && env.Page != nil {
+			totalElements = env.Page.TotalElements
+		}
 		if totalElements != nil && len(all) >= *totalElements {
 			break
 		}
@@ -499,8 +594,12 @@ func GetAll[T any](
 		actualPageSize := pageSize
 		if env.Size != nil && *env.Size > 0 {
 			actualPageSize = *env.Size
+		} else if env.Page != nil && env.Page.Size != nil && *env.Page.Size > 0 {
+			actualPageSize = *env.Page.Size
 		} else if env.NumberOfElements != nil && *env.NumberOfElements > 0 {
 			actualPageSize = *env.NumberOfElements
+		} else if env.NumberOfElementsSnk != nil && *env.NumberOfElementsSnk > 0 {
+			actualPageSize = *env.NumberOfElementsSnk
 		}
 
 		if len(items) == 0 || len(items) < actualPageSize {

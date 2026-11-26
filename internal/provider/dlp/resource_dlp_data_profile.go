@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"reflect"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -99,7 +100,7 @@ func (r *dataProfileResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	state, err := dataProfileDTOToModel(ctx, &created)
+	state, err := dataProfileDTOToModel(ctx, &created, &plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Error mapping created data profile to state", err.Error())
 		return
@@ -125,7 +126,7 @@ func (r *dataProfileResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	var dto dlpclient.DataProfileDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -135,7 +136,7 @@ func (r *dataProfileResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	updatedState, err := dataProfileDTOToModel(ctx, &dto)
+	updatedState, err := dataProfileDTOToModel(ctx, &dto, &state)
 	if err != nil {
 		resp.Diagnostics.AddError("Error mapping data profile DTO to state", err.Error())
 		return
@@ -180,12 +181,12 @@ func (r *dataProfileResource) Update(ctx context.Context, req resource.UpdateReq
 	tflog.Debug(ctx, "Updating DLP Data Profile", map[string]interface{}{"id": id, "name": dto.Name})
 
 	var updated dlpclient.DataProfileDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Failed to update DLP data profile", err.Error())
 		return
 	}
 
-	state, err := dataProfileDTOToModel(ctx, &updated)
+	state, err := dataProfileDTOToModel(ctx, &updated, &plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Error mapping updated data profile to state", err.Error())
 		return
@@ -193,8 +194,6 @@ func (r *dataProfileResource) Update(ctx context.Context, req resource.UpdateReq
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
-
-func strPtr(s string) *string { return &s }
 
 func (r *dataProfileResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state models.DataProfileResourceModel
@@ -213,50 +212,20 @@ func (r *dataProfileResource) Delete(ctx context.Context, req resource.DeleteReq
 
 	tflog.Debug(ctx, "Deleting DLP Data Profile", map[string]interface{}{"id": id})
 
-	// Disable the profile before deletion so child data patterns/dictionaries can be cleanly deleted afterward.
+	// 1) Disable the profile via /v1/api/data-profile/update-data-profiles-status (ignore 404).
 	_ = r.client.Patch(ctx, "/v1/api/data-profile/update-data-profiles-status", nil, []map[string]any{
 		{"id": id, "profile_status": "disabled"},
 	}, nil)
 
-	err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil)
+	// 2) Call DELETE /v2/api/data-profiles/{id} and if that fails (and is not 404), return a diagnostic error.
+	err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil)
 	if err != nil && !dlpclient.IsNotFound(err) {
 		resp.Diagnostics.AddError("Failed to delete DLP data profile", err.Error())
 		return
 	}
 
-	// If the backend skipped deleting a schemaVersion=2 profile when service-name != dlp,
-	// rename it and detach custom child patterns so both the profile name and child patterns can be reused/deleted.
-	var check dlpclient.DataProfileDTO
-	if getErr := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil, &check); getErr == nil {
-		deletedName := fmt.Sprintf("deleted-%s-%d", id, time.Now().Unix())
-		if len(deletedName) > 60 {
-			deletedName = deletedName[:60]
-		}
-		check.Name = deletedName
-		disabled := "disabled"
-		check.ProfileStatus = &disabled
-		check.DetectionRules = []dlpclient.DetectionRuleDTO{
-			{
-				RuleType: "expression_tree",
-				ExpressionTree: &dlpclient.ExpressionTreeNodeDTO{
-					OperatorType: strPtr("or"),
-					SubExpressions: []dlpclient.ExpressionTreeNodeDTO{
-						{
-							RuleItem: &dlpclient.RuleItemDTO{
-								ID:                     "5cd607d2f2441800083c542e",
-								Name:                   strPtr("Credit Card Numbers"),
-								DetectionTechnique:     "weighted_regex",
-								MatchType:              strPtr("include"),
-								OccurrenceOperatorType: "any",
-								ConfidenceLevel:        strPtr("high"),
-							},
-						},
-					},
-				},
-			},
-		}
-		_ = r.client.Put(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil, check, nil)
-	}
+	// Also call DELETE /v1/api/data-profiles/{id} as a best-effort cleanup.
+	_ = r.client.Delete(ctx, fmt.Sprintf("/v1/api/data-profiles/%s", url.PathEscape(id)), nil)
 }
 
 func (r *dataProfileResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -304,12 +273,12 @@ func (d *dataProfileDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	var dto dlpclient.DataProfileDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Failed to fetch DLP data profile", err.Error())
 		return
 	}
 
-	model, err := dataProfileDTOToModel(ctx, &dto)
+	model, err := dataProfileDTOToModel(ctx, &dto, &state)
 	if err != nil {
 		resp.Diagnostics.AddError("Error mapping data profile DTO to model", err.Error())
 		return
@@ -379,7 +348,7 @@ func (d *dataProfileListDataSource) Read(ctx context.Context, req datasource.Rea
 				continue
 			}
 		}
-		m, err := dataProfileDTOToModel(ctx, &item)
+		m, err := dataProfileDTOToModel(ctx, &item, nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error mapping data profile item to model", err.Error())
 			return
@@ -555,7 +524,7 @@ func ruleItemModelToDTO(m *models.DataProfileRuleItemModel) *dlpclient.RuleItemD
 	return item
 }
 
-func dataProfileDTOToModel(ctx context.Context, dto *dlpclient.DataProfileDTO) (models.DataProfileResourceModel, error) {
+func dataProfileDTOToModel(ctx context.Context, dto *dlpclient.DataProfileDTO, prior *models.DataProfileResourceModel) (models.DataProfileResourceModel, error) {
 	var m models.DataProfileResourceModel
 
 	idStr := ""
@@ -596,7 +565,7 @@ func dataProfileDTOToModel(ctx context.Context, dto *dlpclient.DataProfileDTO) (
 		m.Version = types.Int64Value(1)
 	}
 
-	for _, ruleDTO := range dto.DetectionRules {
+	for i, ruleDTO := range dto.DetectionRules {
 		ruleModel := models.DataProfileDetectionRuleModel{
 			RuleType: types.StringValue(ruleDTO.RuleType),
 		}
@@ -612,7 +581,11 @@ func dataProfileDTOToModel(ctx context.Context, dto *dlpclient.DataProfileDTO) (
 		}
 
 		if ruleDTO.ExpressionTree != nil {
-			treeModel, err := expressionTreeDTOToModel(ruleDTO.ExpressionTree)
+			var priorExpr *models.DataProfileExpressionTreeModel
+			if prior != nil && i < len(prior.DetectionRules) {
+				priorExpr = prior.DetectionRules[i].ExpressionTree
+			}
+			treeModel, err := expressionTreeDTOToModel(ruleDTO.ExpressionTree, priorExpr)
 			if err != nil {
 				return m, err
 			}
@@ -625,7 +598,46 @@ func dataProfileDTOToModel(ctx context.Context, dto *dlpclient.DataProfileDTO) (
 	return m, nil
 }
 
-func expressionTreeDTOToModel(node *dlpclient.ExpressionTreeNodeDTO) (*models.DataProfileExpressionTreeModel, error) {
+func expressionTreeDTOToModel(node *dlpclient.ExpressionTreeNodeDTO, prior *models.DataProfileExpressionTreeModel) (*models.DataProfileExpressionTreeModel, error) {
+	// Check if user configured expression_tree_json while leaving structured fields null
+	if prior != nil && !prior.ExpressionTreeJson.IsNull() && !prior.ExpressionTreeJson.IsUnknown() && prior.ExpressionTreeJson.ValueString() != "" {
+		isStructuredEmpty := prior.OperatorType.IsNull() && prior.RuleItem == nil && len(prior.SubExpressions) == 0
+
+		if isStructuredEmpty {
+			// Compare server node with prior JSON
+			var priorNode dlpclient.ExpressionTreeNodeDTO
+			if err := json.Unmarshal([]byte(prior.ExpressionTreeJson.ValueString()), &priorNode); err == nil {
+				// Normalize priorNode defaults so it can be semantically compared to server node
+				_, _ = dlpclient.NormalizeAndValidateDataProfile(&dlpclient.DataProfileDTO{
+					Name: "temp",
+					DetectionRules: []dlpclient.DetectionRuleDTO{
+						{
+							RuleType:       "expression_tree",
+							ExpressionTree: &priorNode,
+						},
+					},
+				})
+
+				normPriorBytes, _ := json.Marshal(&priorNode)
+				normServerBytes, _ := json.Marshal(node)
+
+				var priorParsed, serverParsed any
+				_ = json.Unmarshal(normPriorBytes, &priorParsed)
+				_ = json.Unmarshal(normServerBytes, &serverParsed)
+
+				if reflect.DeepEqual(serverParsed, priorParsed) {
+					// Preserve user's expression_tree_json and keep structured fields null
+					return &models.DataProfileExpressionTreeModel{
+						OperatorType:       types.StringNull(),
+						RuleItem:           nil,
+						SubExpressions:     nil,
+						ExpressionTreeJson: prior.ExpressionTreeJson,
+					}, nil
+				}
+			}
+		}
+	}
+
 	tree := &models.DataProfileExpressionTreeModel{
 		ExpressionTreeJson: types.StringNull(),
 	}

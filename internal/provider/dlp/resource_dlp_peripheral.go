@@ -91,7 +91,7 @@ func (r *PeripheralResource) Read(ctx context.Context, req resource.ReadRequest,
 	}
 
 	var dto dlpclient.PeripheralDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/peripherals/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/peripherals/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -144,7 +144,7 @@ func (r *PeripheralResource) Update(ctx context.Context, req resource.UpdateRequ
 	dto.ID = &id
 
 	var updated dlpclient.PeripheralDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/peripherals/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/peripherals/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Peripheral", err.Error())
 		return
 	}
@@ -174,7 +174,7 @@ func (r *PeripheralResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/peripherals/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/peripherals/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Peripheral", err.Error())
 			return
@@ -229,7 +229,7 @@ func (d *PeripheralDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	var dto dlpclient.PeripheralDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/peripherals/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/peripherals/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Peripheral", err.Error())
 		return
 	}
@@ -318,27 +318,27 @@ func peripheralModelToDTO(m *models.PeripheralModel) (*dlpclient.PeripheralDTO, 
 		Type: m.Type.ValueString(),
 	}
 
-	if !m.Id.IsNull() && m.Id.ValueString() != "" {
+	if !m.Id.IsNull() && !m.Id.IsUnknown() && m.Id.ValueString() != "" {
 		v := m.Id.ValueString()
 		dto.ID = &v
 	}
-	if !m.Description.IsNull() {
+	if !m.Description.IsNull() && !m.Description.IsUnknown() {
 		v := m.Description.ValueString()
 		dto.Description = &v
 	}
-	if !m.PrinterType.IsNull() {
+	if !m.PrinterType.IsNull() && !m.PrinterType.IsUnknown() {
 		v := m.PrinterType.ValueString()
 		dto.PrinterType = &v
 	}
-	if !m.ServerAddress.IsNull() {
+	if !m.ServerAddress.IsNull() && !m.ServerAddress.IsUnknown() {
 		v := m.ServerAddress.ValueString()
 		dto.ServerAddress = &v
 	}
-	if !m.VendorId.IsNull() {
+	if !m.VendorId.IsNull() && !m.VendorId.IsUnknown() {
 		v := m.VendorId.ValueString()
 		dto.VendorID = &v
 	}
-	if !m.ProductId.IsNull() {
+	if !m.ProductId.IsNull() && !m.ProductId.IsUnknown() {
 		v := m.ProductId.ValueString()
 		dto.ProductID = &v
 	}

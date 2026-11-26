@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -89,7 +90,7 @@ func (r *EdmDatasetResource) Create(ctx context.Context, req resource.CreateRequ
 
 	tflog.Debug(ctx, "Adopting EDM Dataset into Terraform State", map[string]any{"id": targetID})
 	var dto dlpclient.EdmDatasetDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", targetID), nil, &dto); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(targetID)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading EDM Dataset", err.Error())
 		return
 	}
@@ -116,13 +117,18 @@ func (r *EdmDatasetResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	tflog.Debug(ctx, "Reading DLP EDM Dataset", map[string]any{"id": id})
 	var dto dlpclient.EdmDatasetDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading DLP EDM Dataset", err.Error())
+		return
+	}
+	if dto.IndexStatus != nil && strings.EqualFold(*dto.IndexStatus, "DELETED") {
+		tflog.Debug(ctx, "EDM Dataset has index_status DELETED, removing from state", map[string]any{"id": id})
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -150,7 +156,7 @@ func (r *EdmDatasetResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	tflog.Debug(ctx, "Refreshing DLP EDM Dataset", map[string]any{"id": id})
 	var dto dlpclient.EdmDatasetDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", id), nil, &dto); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Refreshing DLP EDM Dataset", err.Error())
 		return
 	}
@@ -175,7 +181,7 @@ func (r *EdmDatasetResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 
 	tflog.Debug(ctx, "Deleting DLP EDM Dataset", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP EDM Dataset", err.Error())
 			return
@@ -230,7 +236,7 @@ func (d *EdmDatasetDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	var dto dlpclient.EdmDatasetDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/edm-datasets/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP EDM Dataset", err.Error())
 		return
 	}

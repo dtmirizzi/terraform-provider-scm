@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -60,9 +61,21 @@ func (r *DictionaryResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	tflog.Debug(ctx, "Creating DLP Dictionary metadata", map[string]any{"name": dto.Name})
+	parts, valErrs, err := dlpclient.BuildDictionaryUpdateParts(dto, keywords)
+	if err != nil {
+		for _, e := range valErrs {
+			resp.Diagnostics.AddError("Dictionary Validation Failed", e)
+		}
+		if len(valErrs) == 0 {
+			resp.Diagnostics.AddError("Dictionary Validation Failed", err.Error())
+		}
+		return
+	}
+
+	tflog.Debug(ctx, "Creating DLP Dictionary via multipart POST", map[string]any{"name": dto.Name})
 	var created dlpclient.DictionaryDTO
-	if err := r.client.Post(ctx, "/v2/api/dictionaries", nil, dto, &created); err != nil {
+	postParams := map[string]string{"keywords": "true"}
+	if err := r.client.DoMultipart(ctx, "POST", "/v2/api/dictionaries", postParams, parts, &created); err != nil {
 		resp.Diagnostics.AddError("Error Creating DLP Dictionary", err.Error())
 		return
 	}
@@ -76,38 +89,15 @@ func (r *DictionaryResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// If keyword_list is provided on Create, after POST returns created ID,
-	// also call multipart PUT /v2/api/dictionaries/{id}?keywords=true with BuildDictionaryUpdateParts.
-	if len(keywords) > 0 {
-		created.ID = &createdID
-		parts, valErrs, err := dlpclient.BuildDictionaryUpdateParts(&created, keywords)
-		if err != nil {
-			for _, e := range valErrs {
-				resp.Diagnostics.AddError("Dictionary Keywords Validation Failed", e)
-			}
-			if len(valErrs) == 0 {
-				resp.Diagnostics.AddError("Dictionary Keywords Validation Failed", err.Error())
-			}
-			return
-		}
-
-		tflog.Debug(ctx, "Uploading DLP Dictionary keywords via multipart PUT", map[string]any{"id": createdID, "count": len(keywords)})
-		var updated dlpclient.DictionaryDTO
-		params := map[string]string{"keywords": "true"}
-		putErr := r.client.DoMultipart(ctx, "PUT", fmt.Sprintf("/v2/api/dictionaries/%s", createdID), params, parts, &updated)
-		if putErr != nil {
-			resp.Diagnostics.AddError("Error Uploading DLP Dictionary Keywords", putErr.Error())
-			return
-		}
-		created = updated
-	}
-
-	// Fetch full dictionary details with keywords=true
+	// Fetch full dictionary details with keywords=true if keywords were not returned
 	var finalDTO dlpclient.DictionaryDTO
-	readParams := map[string]string{"keywords": "true"}
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", createdID), readParams, &finalDTO); err != nil {
-		// Fallback to created if GET fails
+	if len(created.Keywords) > 0 || len(keywords) == 0 {
 		finalDTO = created
+	} else {
+		readParams := map[string]string{"keywords": "true"}
+		if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(createdID)), readParams, &finalDTO); err != nil {
+			finalDTO = created
+		}
 	}
 
 	state, diags := dictionaryDTOToModel(ctx, &finalDTO, keywords)
@@ -138,7 +128,7 @@ func (r *DictionaryResource) Read(ctx context.Context, req resource.ReadRequest,
 	tflog.Debug(ctx, "Reading DLP Dictionary", map[string]any{"id": id})
 	var dto dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", id), params, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -172,6 +162,10 @@ func (r *DictionaryResource) Update(ctx context.Context, req resource.UpdateRequ
 	id := plan.Id.ValueString()
 	if id == "" {
 		id = plan.Tfid.ValueString()
+	}
+	if id == "" {
+		resp.Diagnostics.AddError("Missing ID", "Cannot update Dictionary without an ID.")
+		return
 	}
 
 	dto, keywords, diags := dictionaryModelToDTO(ctx, &plan)
@@ -208,6 +202,20 @@ func (r *DictionaryResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 	dto.ID = &id
 
+	// If keyword_list in plan is null or empty, preserve existing keywords from state
+	if plan.KeywordList.IsNull() || len(keywords) == 0 {
+		if !state.KeywordList.IsNull() {
+			var stateKeywords []string
+			diags.Append(state.KeywordList.ElementsAs(ctx, &stateKeywords, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			if len(stateKeywords) > 0 {
+				keywords = stateKeywords
+			}
+		}
+	}
+
 	parts, valErrs, err := dlpclient.BuildDictionaryUpdateParts(dto, keywords)
 	if err != nil {
 		for _, e := range valErrs {
@@ -222,14 +230,14 @@ func (r *DictionaryResource) Update(ctx context.Context, req resource.UpdateRequ
 	tflog.Debug(ctx, "Updating DLP Dictionary via multipart PUT", map[string]any{"id": id})
 	var updated dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	if err := r.client.DoMultipart(ctx, "PUT", fmt.Sprintf("/v2/api/dictionaries/%s", id), params, parts, &updated); err != nil {
+	if err := r.client.DoMultipart(ctx, "PUT", fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, parts, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Dictionary", err.Error())
 		return
 	}
 
 	// Fetch refreshed dictionary with keywords
 	var finalDTO dlpclient.DictionaryDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", id), params, &finalDTO); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &finalDTO); err != nil {
 		finalDTO = updated
 	}
 
@@ -258,7 +266,7 @@ func (r *DictionaryResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Dictionary", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Dictionary", err.Error())
 			return
@@ -314,7 +322,7 @@ func (d *DictionaryDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 	var dto dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", id), params, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Dictionary", err.Error())
 		return
 	}

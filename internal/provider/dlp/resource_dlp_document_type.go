@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -107,7 +108,7 @@ func (r *DocumentTypeResource) Read(ctx context.Context, req resource.ReadReques
 
 	tflog.Debug(ctx, "Reading DLP Document Type", map[string]any{"id": id})
 	var dto dlpclient.DocumentTypeDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -132,6 +133,10 @@ func (r *DocumentTypeResource) Update(ctx context.Context, req resource.UpdateRe
 	if id == "" {
 		id = plan.Tfid.ValueString()
 	}
+	if id == "" {
+		resp.Diagnostics.AddError("Missing ID", "Cannot update Document Type without an ID.")
+		return
+	}
 
 	dto := documentTypeModelToDTO(&plan)
 	dto.ID = &id
@@ -144,7 +149,7 @@ func (r *DocumentTypeResource) Update(ctx context.Context, req resource.UpdateRe
 
 	tflog.Debug(ctx, "Updating DLP Document Type", map[string]any{"id": id})
 	var updated dlpclient.DocumentTypeDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/document-types/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Document Type", err.Error())
 		return
 	}
@@ -169,7 +174,7 @@ func (r *DocumentTypeResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Document Type", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/document-types/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Document Type", err.Error())
 			return
@@ -224,7 +229,7 @@ func (d *DocumentTypeDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	var dto dlpclient.DocumentTypeDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/document-types/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Document Type", err.Error())
 		return
 	}

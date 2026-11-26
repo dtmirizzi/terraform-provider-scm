@@ -134,6 +134,48 @@ func setupTestServer(b *mockPrimitivesBackend) *httptest.Server {
 				"total_elements": len(list),
 			})
 		case http.MethodPost:
+			if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
+				mr, err := r.MultipartReader()
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				var dto dlpclient.DictionaryDTO
+				var keywords []string
+				for {
+					part, err := mr.NextPart()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					data, _ := io.ReadAll(part)
+					if part.FormName() == "data" || part.FormName() == "json" {
+						_ = json.Unmarshal(data, &dto)
+					} else if part.FormName() == "file" {
+						lines := strings.Split(string(data), "\n")
+						for _, l := range lines {
+							l = strings.TrimSpace(l)
+							if l != "" && !strings.EqualFold(l, "keywords") {
+								keywords = append(keywords, l)
+							}
+						}
+					}
+				}
+				b.nextID++
+				id := fmt.Sprintf("dict-%d", b.nextID)
+				dto.ID = &id
+				dto.Keywords = keywords
+				cnt := int64(len(keywords))
+				dto.KeywordCount = &cnt
+				b.dictionaries[id] = dto
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(dto)
+				return
+			}
+
 			var dto dlpclient.DictionaryDTO
 			if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -575,6 +617,29 @@ func TestPrimitivesDictionary(t *testing.T) {
 		t.Fatalf("Expected 3 keywords after update, got %d", len(savedDict.Keywords))
 	}
 
+	// Metadata-only update (keyword_list null): verify existing keywords are NOT wiped (C2)
+	var stateAfterKeywordsUpdate models.DictionaryModel
+	_ = updateResp.State.Get(ctx, &stateAfterKeywordsUpdate)
+	metaOnlyModel := stateAfterKeywordsUpdate
+	metaOnlyModel.Description = types.StringValue("Metadata only update without keywords")
+	metaOnlyModel.KeywordList = types.ListNull(types.StringType)
+	metaOnlyPlan := tfsdk.Plan{Schema: models.DictionaryResourceSchema}
+	_ = metaOnlyPlan.Set(ctx, &metaOnlyModel)
+
+	metaOnlyReq := resource.UpdateRequest{Plan: metaOnlyPlan, State: updateResp.State}
+	metaOnlyResp := resource.UpdateResponse{State: updateResp.State}
+	res.Update(ctx, metaOnlyReq, &metaOnlyResp)
+	if metaOnlyResp.Diagnostics.HasError() {
+		t.Fatalf("Metadata-only update failed: %v", metaOnlyResp.Diagnostics.Errors())
+	}
+
+	backend.mu.Lock()
+	savedDict = backend.dictionaries[dictID]
+	backend.mu.Unlock()
+	if len(savedDict.Keywords) != 3 {
+		t.Fatalf("Expected 3 keywords preserved after metadata-only update, got %d", len(savedDict.Keywords))
+	}
+
 	// DataSource and List
 	ds := NewDictionaryDataSource().(*DictionaryDataSource)
 	ds.client = client
@@ -853,6 +918,29 @@ func TestPrimitivesEdmDataset(t *testing.T) {
 
 	if _, ok := backend.edmDatasets[datasetID]; ok {
 		t.Errorf("EDM dataset still exists in backend after Delete")
+	}
+
+	// 5. Test M13: index_status == "DELETED" treats resource as deleted in Read
+	delDatasetID := "edm-seed-deleted"
+	delStatus := "DELETED"
+	backend.edmDatasets[delDatasetID] = dlpclient.EdmDatasetDTO{
+		ID:          &delDatasetID,
+		Name:        "Deleted_Dataset",
+		IndexStatus: &delStatus,
+	}
+	var delStateModel models.EdmDatasetModel
+	delStateModel.Id = types.StringValue(delDatasetID)
+	delState := tfsdk.State{Schema: models.EdmDatasetResourceSchema}
+	_ = delState.Set(ctx, &delStateModel)
+	delReadResp := resource.ReadResponse{State: delState}
+	res.Read(ctx, resource.ReadRequest{State: delState}, &delReadResp)
+	if delReadResp.Diagnostics.HasError() {
+		t.Fatalf("Read on DELETED status failed: %v", delReadResp.Diagnostics.Errors())
+	}
+	var resultAfterRead models.EdmDatasetModel
+	_ = delReadResp.State.Get(ctx, &resultAfterRead)
+	if !resultAfterRead.Id.IsNull() && resultAfterRead.Id.ValueString() != "" {
+		t.Errorf("Expected resource state to be removed when index_status is DELETED, got id=%s", resultAfterRead.Id.ValueString())
 	}
 }
 

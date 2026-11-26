@@ -205,3 +205,59 @@ func TestNormalizeAndValidateDataProfile(t *testing.T) {
 		t.Errorf("expected marshaled JSON to include match_type: %s", string(b))
 	}
 }
+
+func TestSecurityHardening(t *testing.T) {
+	// 1. ValidateResourceID & EscapeID (DLP-003 path traversal hardening)
+	if err := ValidateResourceID("../admin"); err == nil {
+		t.Errorf("expected traversal ID '../admin' to fail validation")
+	}
+	if err := ValidateResourceID("123/456"); err == nil {
+		t.Errorf("expected slash ID '123/456' to fail validation")
+	}
+	if err := ValidateResourceID("valid-id_123"); err != nil {
+		t.Errorf("expected 'valid-id_123' to be valid, got: %v", err)
+	}
+	if got := EscapeID("a/b?c=1"); got != "a%2Fb%3Fc=1" {
+		t.Errorf("expected URL-escaped ID, got %q", got)
+	}
+
+	// 2. Reject external origin URLs in buildURL (DLP-002 token exfiltration hardening)
+	client := NewClient(Config{Host: "https://api.dlp.paloaltonetworks.com"})
+	if _, err := client.buildURL("https://evil.example.com/steal", nil); err == nil {
+		t.Errorf("expected external origin URL to be rejected by buildURL")
+	}
+	if u, err := client.buildURL("https://api.dlp.paloaltonetworks.com/v2/api/ocr", nil); err != nil || u == "" {
+		t.Errorf("expected same-origin URL to be allowed, got u=%q err=%v", u, err)
+	}
+
+	// 3. Cross-origin redirect strips Authorization header
+	var redirectSeenAuth string
+	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectSeenAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer targetSrv.Close()
+
+	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetSrv.URL+"/landed", http.StatusFound)
+	}))
+	defer originSrv.Close()
+
+	setupCli := &setup.Client{
+		Jwt:          "secret-bearer-token",
+		JwtExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+	redirClient := NewClient(Config{
+		SetupClient: setupCli,
+		HttpClient:  originSrv.Client(),
+		Host:        originSrv.URL,
+	})
+	var out map[string]any
+	if err := redirClient.Get(context.Background(), "/v1/api/redirect-me", nil, &out); err != nil {
+		t.Fatalf("unexpected redirect error: %v", err)
+	}
+	if redirectSeenAuth != "" {
+		t.Errorf("expected Authorization header to be stripped on cross-origin redirect, got %q", redirectSeenAuth)
+	}
+}

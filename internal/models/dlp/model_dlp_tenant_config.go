@@ -205,6 +205,22 @@ var DlpOcrEnablementResourceSchema = rschema.Schema{
 		"target_service_name": rschema.StringAttribute{
 			Description: "Target service name (e.g. prisma-access, ngfw, dlp).",
 			Required:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf(
+					"gpcs",
+					"aperture",
+					"redlock",
+					"prisma-cloud",
+					"prisma-saas",
+					"prisma-access",
+					"ngfw",
+					"dlp",
+					"email-dlp",
+					"cortex-xdr",
+					"endpoint-dlp",
+					"prisma-access-browser",
+				),
+			},
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.RequiresReplace(),
 			},

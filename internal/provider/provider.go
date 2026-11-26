@@ -169,19 +169,19 @@ func (p *ScmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	}
 
 	authUrl := config.AuthUrl.ValueString()
-	if authUrl == "" {
+	if authUrl == "" && os.Getenv("SCM_AUTH_URL") == "" {
 		authUrl = strings.TrimSpace(os.Getenv("DLP_AUTH_URL"))
 	}
 	clientId := config.ClientId.ValueString()
-	if clientId == "" {
+	if clientId == "" && os.Getenv("SCM_CLIENT_ID") == "" {
 		clientId = strings.TrimSpace(os.Getenv("DLP_CLIENT_ID"))
 	}
 	clientSecret := config.ClientSecret.ValueString()
-	if clientSecret == "" {
+	if clientSecret == "" && os.Getenv("SCM_CLIENT_SECRET") == "" {
 		clientSecret = strings.TrimSpace(os.Getenv("DLP_CLIENT_SECRET"))
 	}
 	scope := config.Scope.ValueString()
-	if scope == "" {
+	if scope == "" && os.Getenv("SCM_SCOPE") == "" {
 		if tsgId := strings.TrimSpace(os.Getenv("DLP_TSG_ID")); tsgId != "" {
 			if strings.HasPrefix(tsgId, "tsg_id:") {
 				scope = tsgId
@@ -191,11 +191,6 @@ func (p *ScmProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		}
 	}
 	dlpHost := config.DlpHost.ValueString()
-	if dlpHost == "" {
-		if v := strings.TrimSpace(os.Getenv("DLP_API_URL")); v != "" {
-			dlpHost = v
-		}
-	}
 
 	setupClient := &setup.Client{
 		AuthUrl:          authUrl,

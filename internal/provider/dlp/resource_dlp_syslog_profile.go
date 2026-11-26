@@ -91,7 +91,7 @@ func (r *SyslogProfileResource) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	var dto dlpclient.SyslogProfileDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -145,7 +145,7 @@ func (r *SyslogProfileResource) Update(ctx context.Context, req resource.UpdateR
 	dto.ProfileID = &id
 
 	var updated dlpclient.SyslogProfileDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Syslog Profile", err.Error())
 		return
 	}
@@ -175,7 +175,7 @@ func (r *SyslogProfileResource) Delete(ctx context.Context, req resource.DeleteR
 		return
 	}
 
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Syslog Profile", err.Error())
 			return
@@ -230,7 +230,7 @@ func (d *SyslogProfileDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 
 	var dto dlpclient.SyslogProfileDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/syslog/server-profile/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Syslog Profile", err.Error())
 		return
 	}
@@ -322,16 +322,16 @@ func syslogProfileModelToDTO(m *models.SyslogProfileModel) (*dlpclient.SyslogPro
 		Format:      m.Format.ValueString(),
 	}
 
-	if !m.Id.IsNull() && m.Id.ValueString() != "" {
+	if !m.Id.IsNull() && !m.Id.IsUnknown() && m.Id.ValueString() != "" {
 		v := m.Id.ValueString()
 		dto.ID = &v
 		dto.ProfileID = &v
 	}
-	if !m.ConnectionType.IsNull() {
+	if !m.ConnectionType.IsNull() && !m.ConnectionType.IsUnknown() {
 		v := m.ConnectionType.ValueString()
 		dto.ConnectionType = &v
 	}
-	if !m.Cert.IsNull() {
+	if !m.Cert.IsNull() && !m.Cert.IsUnknown() {
 		v := m.Cert.ValueString()
 		dto.Cert = &v
 	}

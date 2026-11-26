@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -67,7 +68,7 @@ func (r *EndpointPolicyResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	state, diags := endpointPolicyDTOToModel(&created)
+	state, diags := endpointPolicyDTOToModel(&created, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -93,7 +94,7 @@ func (r *EndpointPolicyResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	var dto dlpclient.EndpointPolicyDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -103,7 +104,7 @@ func (r *EndpointPolicyResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	updated, diags := endpointPolicyDTOToModel(&dto)
+	updated, diags := endpointPolicyDTOToModel(&dto, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -146,12 +147,12 @@ func (r *EndpointPolicyResource) Update(ctx context.Context, req resource.Update
 	dto.ID = &id
 
 	var updated dlpclient.EndpointPolicyDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Endpoint Policy", err.Error())
 		return
 	}
 
-	newState, diags := endpointPolicyDTOToModel(&updated)
+	newState, diags := endpointPolicyDTOToModel(&updated, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -176,7 +177,7 @@ func (r *EndpointPolicyResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Endpoint Policy", err.Error())
 			return
@@ -231,12 +232,12 @@ func (d *EndpointPolicyDataSource) Read(ctx context.Context, req datasource.Read
 	}
 
 	var dto dlpclient.EndpointPolicyDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/endpoint-policies/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Endpoint Policy", err.Error())
 		return
 	}
 
-	state, diags := endpointPolicyDTOToModel(&dto)
+	state, diags := endpointPolicyDTOToModel(&dto, nil)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -292,7 +293,7 @@ func (d *EndpointPolicyListDataSource) Read(ctx context.Context, req datasource.
 	var policyModels []models.EndpointPolicyModel
 	for i := range allPolicies {
 		p := &allPolicies[i]
-		m, diags := endpointPolicyDTOToModel(p)
+		m, diags := endpointPolicyDTOToModel(p, nil)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -322,15 +323,15 @@ func endpointPolicyModelToDTO(m *models.EndpointPolicyModel) (*dlpclient.Endpoin
 		Severity: m.Severity.ValueString(),
 	}
 
-	if !m.Id.IsNull() && m.Id.ValueString() != "" {
+	if !m.Id.IsNull() && !m.Id.IsUnknown() && m.Id.ValueString() != "" {
 		v := m.Id.ValueString()
 		dto.ID = &v
 	}
-	if !m.Description.IsNull() {
+	if !m.Description.IsNull() && !m.Description.IsUnknown() {
 		v := m.Description.ValueString()
 		dto.Description = &v
 	}
-	if !m.Priority.IsNull() {
+	if !m.Priority.IsNull() && !m.Priority.IsUnknown() {
 		v := m.Priority.ValueInt64()
 		dto.Priority = &v
 	}
@@ -360,7 +361,18 @@ func endpointPolicyModelToDTO(m *models.EndpointPolicyModel) (*dlpclient.Endpoin
 	return dto, diags
 }
 
-func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO) (models.EndpointPolicyModel, diag.Diagnostics) {
+func jsonStringsSemanticallyEqual(a, b string) bool {
+	var va, vb any
+	if err := json.Unmarshal([]byte(a), &va); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(b), &vb); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(va, vb)
+}
+
+func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO, prior *models.EndpointPolicyModel) (models.EndpointPolicyModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	var idStr string
@@ -389,13 +401,23 @@ func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO) (models.Endpoint
 	}
 
 	if len(dto.Scope) > 0 {
-		m.ScopeJson = types.StringValue(string(dto.Scope))
+		serverScope := string(dto.Scope)
+		if prior != nil && !prior.ScopeJson.IsNull() && !prior.ScopeJson.IsUnknown() && jsonStringsSemanticallyEqual(prior.ScopeJson.ValueString(), serverScope) {
+			m.ScopeJson = prior.ScopeJson
+		} else {
+			m.ScopeJson = types.StringValue(serverScope)
+		}
 	} else {
 		m.ScopeJson = types.StringValue("{}")
 	}
 
 	if len(dto.Response) > 0 {
-		m.ResponseJson = types.StringValue(string(dto.Response))
+		serverResp := string(dto.Response)
+		if prior != nil && !prior.ResponseJson.IsNull() && !prior.ResponseJson.IsUnknown() && jsonStringsSemanticallyEqual(prior.ResponseJson.ValueString(), serverResp) {
+			m.ResponseJson = prior.ResponseJson
+		} else {
+			m.ResponseJson = types.StringValue(serverResp)
+		}
 	} else {
 		m.ResponseJson = types.StringValue("{}")
 	}

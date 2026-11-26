@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -75,11 +76,11 @@ func (r *dataFilteringProfileResource) Create(ctx context.Context, req resource.
 
 	dto := dataFilteringProfileModelToDTO(ctx, &plan)
 
-	// Resolve ID: if omitted, resolve from list by data_profile_id or fallback to strconv.FormatInt(dataProfileID, 10)
+	// Resolve ID: if omitted, resolve from list by data_profile_id.
+	// Only allow fallback if id is explicitly set and non-empty/known.
 	targetID := plan.Id.ValueString()
 	if targetID == "" {
 		dataProfileID := plan.DataProfileId.ValueInt64()
-		// Try resolving existing filtering profile by data_profile_id from list
 		existingItems, err := dlpclient.GetAll[dlpclient.DataFilteringProfileDTO](
 			ctx,
 			r.client,
@@ -89,16 +90,22 @@ func (r *dataFilteringProfileResource) Create(ctx context.Context, req resource.
 			100,
 			10,
 		)
-		if err == nil {
-			for _, item := range existingItems {
-				if item.DataProfileID != nil && *item.DataProfileID == dataProfileID && item.ID != nil && *item.ID != "" {
-					targetID = *item.ID
-					break
-				}
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to list DLP data filtering profiles to resolve ID", err.Error())
+			return
+		}
+		for _, item := range existingItems {
+			if item.DataProfileID != nil && *item.DataProfileID == dataProfileID && item.ID != nil && *item.ID != "" {
+				targetID = *item.ID
+				break
 			}
 		}
 		if targetID == "" {
-			targetID = strconv.FormatInt(dataProfileID, 10)
+			resp.Diagnostics.AddError(
+				"Unable to resolve Data Filtering Profile ID",
+				fmt.Sprintf("No existing data filtering profile found associated with data_profile_id %d. Ensure the parent data profile exists and has generated a filtering profile, or explicitly specify the 'id' attribute.", dataProfileID),
+			)
+			return
 		}
 	}
 
@@ -106,7 +113,7 @@ func (r *dataFilteringProfileResource) Create(ctx context.Context, req resource.
 	tflog.Debug(ctx, "Creating/Configuring DLP Data Filtering Profile", map[string]interface{}{"id": targetID, "data_profile_id": plan.DataProfileId.ValueInt64()})
 
 	var updated dlpclient.DataFilteringProfileDTO
-	err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", targetID), nil, dto, &updated)
+	err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", url.PathEscape(targetID)), nil, dto, &updated)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to configure DLP data filtering profile", err.Error())
 		return
@@ -132,16 +139,13 @@ func (r *dataFilteringProfileResource) Read(ctx context.Context, req resource.Re
 	if id == "" {
 		id = state.Tfid.ValueString()
 	}
-	if id == "" && !state.DataProfileId.IsNull() {
-		id = strconv.FormatInt(state.DataProfileId.ValueInt64(), 10)
-	}
 	if id == "" {
 		resp.Diagnostics.AddError("Missing ID", "Cannot read data filtering profile without an ID")
 		return
 	}
 
 	var dto dlpclient.DataFilteringProfileDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", url.PathEscape(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -166,9 +170,6 @@ func (r *dataFilteringProfileResource) Update(ctx context.Context, req resource.
 	if id == "" {
 		id = plan.Tfid.ValueString()
 	}
-	if id == "" && !plan.DataProfileId.IsNull() {
-		id = strconv.FormatInt(plan.DataProfileId.ValueInt64(), 10)
-	}
 	if id == "" {
 		resp.Diagnostics.AddError("Missing ID", "Cannot update data filtering profile without an ID")
 		return
@@ -180,7 +181,7 @@ func (r *dataFilteringProfileResource) Update(ctx context.Context, req resource.
 	tflog.Debug(ctx, "Updating DLP Data Filtering Profile", map[string]interface{}{"id": id})
 
 	var updated dlpclient.DataFilteringProfileDTO
-	err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", id), nil, dto, &updated)
+	err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", url.PathEscape(id)), nil, dto, &updated)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update DLP data filtering profile", err.Error())
 		return
@@ -242,7 +243,7 @@ func (d *dataFilteringProfileDataSource) Read(ctx context.Context, req datasourc
 	}
 
 	var dto dlpclient.DataFilteringProfileDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-filtering-profiles/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Failed to fetch DLP data filtering profile", err.Error())
 		return
 	}

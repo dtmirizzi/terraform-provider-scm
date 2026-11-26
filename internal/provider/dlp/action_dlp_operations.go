@@ -37,6 +37,85 @@ var (
 	_ datasource.DataSourceWithConfigure = &DryRunScanDataSource{}
 )
 
+const MaxUploadFileSize = 20 * 1024 * 1024 // 20 MB
+
+func isPathRestricted(resolvedPath string) bool {
+	sensitiveDirs := []string{"/etc", "/var", "/dev", "/usr", "/bin", "/sbin", "/opt", "/sys", "/proc", "/root"}
+	tmp := filepath.Clean(os.TempDir())
+	realTmp := tmp
+	if eval, err := filepath.EvalSymlinks(tmp); err == nil {
+		realTmp = filepath.Clean(eval)
+	}
+
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		sensitiveHome := []string{
+			filepath.Join(home, ".ssh"),
+			filepath.Join(home, ".aws"),
+			filepath.Join(home, ".config"),
+			filepath.Join(home, ".gnupg"),
+			filepath.Join(home, ".netrc"),
+		}
+		for _, s := range sensitiveHome {
+			sClean := filepath.Clean(s)
+			if resolvedPath == sClean || strings.HasPrefix(resolvedPath, sClean+string(filepath.Separator)) {
+				return true
+			}
+		}
+	}
+
+	for _, s := range sensitiveDirs {
+		if resolvedPath == s || strings.HasPrefix(resolvedPath, s+string(filepath.Separator)) {
+			if resolvedPath == tmp || strings.HasPrefix(resolvedPath, tmp+string(filepath.Separator)) ||
+				resolvedPath == realTmp || strings.HasPrefix(resolvedPath, realTmp+string(filepath.Separator)) {
+				return false
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// readValidatedUploadFile validates a local file path (regular file, non-empty, <=20MB, non-restricted path)
+// and returns (fileBytes, basename, error).
+func readValidatedUploadFile(rawPath string) ([]byte, string, error) {
+	trimmed := strings.TrimSpace(rawPath)
+	if trimmed == "" {
+		return nil, "", fmt.Errorf("file_path must not be empty")
+	}
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot resolve file_path %q: %w", rawPath, err)
+	}
+	resolved := filepath.Clean(absPath)
+	if isPathRestricted(resolved) {
+		return nil, "", fmt.Errorf("file_path %q resolves to a restricted system or credential directory", rawPath)
+	}
+	if eval, err := filepath.EvalSymlinks(absPath); err == nil {
+		resolved = filepath.Clean(eval)
+		if isPathRestricted(resolved) {
+			return nil, "", fmt.Errorf("file_path %q resolves to a restricted system or credential directory", rawPath)
+		}
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot access file %q: %w", rawPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, "", fmt.Errorf("file_path %q is not a regular file", rawPath)
+	}
+	if info.Size() == 0 {
+		return nil, "", fmt.Errorf("file_path %q must not be empty", rawPath)
+	}
+	if info.Size() > MaxUploadFileSize {
+		return nil, "", fmt.Errorf("file_path %q exceeds 20MB limit (413 Payload Too Large)", rawPath)
+	}
+	b, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot read file %q: %w", rawPath, err)
+	}
+	return b, filepath.Base(resolved), nil
+}
+
 // ===========================================================================
 // Action: scm_dlp_config_export
 // POST /v1/api/configuration/export
@@ -105,8 +184,8 @@ func (a *ConfigExportAction) Invoke(ctx context.Context, req action.InvokeReques
 		})
 	}
 
-	var reqBody map[string]any
-	if !data.ExportType.IsNull() && !data.ExportType.IsUnknown() {
+	var reqBody any
+	if !data.ExportType.IsNull() && !data.ExportType.IsUnknown() && data.ExportType.ValueString() != "" {
 		reqBody = map[string]any{
 			"export_type": data.ExportType.ValueString(),
 		}
@@ -127,15 +206,26 @@ func (a *ConfigExportAction) Invoke(ctx context.Context, req action.InvokeReques
 		if !data.PollIntervalMs.IsNull() && data.PollIntervalMs.ValueInt64() > 0 {
 			pollMs = data.PollIntervalMs.ValueInt64()
 		}
+		if pollMs < 250 {
+			pollMs = 250
+		} else if pollMs > 5000 {
+			pollMs = 5000
+		}
 		timeoutMs := int64(30000)
 		if !data.TimeoutMs.IsNull() && data.TimeoutMs.ValueInt64() > 0 {
 			timeoutMs = data.TimeoutMs.ValueInt64()
 		}
+		if timeoutMs < 1000 {
+			timeoutMs = 1000
+		} else if timeoutMs > 60000 {
+			timeoutMs = 60000
+		}
 
 		deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 		var jobStatus dlpclient.ConfigurationJobResponse
+		escapedJobID := dlpclient.EscapeID(exportResp.JobID)
 		for {
-			if err := a.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/job/%s", exportResp.JobID), nil, &jobStatus); err != nil {
+			if err := a.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/job/%s", escapedJobID), nil, &jobStatus); err != nil {
 				resp.Diagnostics.AddError("Error Polling Config Export Job", err.Error())
 				return
 			}
@@ -147,12 +237,19 @@ func (a *ConfigExportAction) Invoke(ctx context.Context, req action.InvokeReques
 				resp.Diagnostics.AddError("Config Export Polling Timeout", fmt.Sprintf("Export job %s did not reach terminal status within %dms", exportResp.JobID, timeoutMs))
 				return
 			}
-			time.Sleep(time.Duration(pollMs) * time.Millisecond)
+			timer := time.NewTimer(time.Duration(pollMs) * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				resp.Diagnostics.AddError("Config Export Polling Cancelled", ctx.Err().Error())
+				return
+			case <-timer.C:
+			}
 		}
 		output["completed_job"] = jobStatus
 		if strings.EqualFold(jobStatus.Status, "completed") {
 			var dlLink map[string]any
-			if err := a.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/%s", exportResp.JobID), nil, &dlLink); err == nil {
+			if err := a.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/%s", escapedJobID), nil, &dlLink); err == nil {
 				output["download_link"] = dlLink
 			}
 		}
@@ -164,7 +261,7 @@ func (a *ConfigExportAction) Invoke(ctx context.Context, req action.InvokeReques
 	}
 
 	completionMsg := fmt.Sprintf("Config export job submitted successfully:\n%s", string(rawJSON))
-	tflog.Info(ctx, completionMsg)
+	tflog.Debug(ctx, completionMsg)
 	if resp != nil && resp.SendProgress != nil {
 		resp.SendProgress(action.InvokeProgressEvent{
 			Message: completionMsg,
@@ -256,19 +353,22 @@ func (a *ConfigImportAction) Invoke(ctx context.Context, req action.InvokeReques
 		var fileBytes []byte
 		fileName := "dlp-config-export.json"
 		if !data.FilePath.IsNull() && data.FilePath.ValueString() != "" {
-			p := data.FilePath.ValueString()
-			b, err := os.ReadFile(p)
+			b, baseName, err := readValidatedUploadFile(data.FilePath.ValueString())
 			if err != nil {
-				resp.Diagnostics.AddError("File Read Error", fmt.Sprintf("Failed to read configuration file %q: %s", p, err))
+				resp.Diagnostics.AddError("File Validation Error", err.Error())
 				return
 			}
 			fileBytes = b
-			fileName = filepath.Base(p)
+			fileName = baseName
 		} else {
 			fileBytes = []byte(data.FileContent.ValueString())
+			if len(fileBytes) == 0 || len(fileBytes) > MaxUploadFileSize {
+				resp.Diagnostics.AddError("File Validation Error", "file_content must be non-empty and at most 20MB.")
+				return
+			}
 		}
 		if !data.FileName.IsNull() && data.FileName.ValueString() != "" {
-			fileName = data.FileName.ValueString()
+			fileName = filepath.Base(data.FileName.ValueString())
 		}
 
 		parts := []dlpclient.MultipartPart{
@@ -306,7 +406,7 @@ func (a *ConfigImportAction) Invoke(ctx context.Context, req action.InvokeReques
 			return
 		}
 		var conflictResp map[string]any
-		if err := a.client.Put(ctx, fmt.Sprintf("/v1/api/configuration/import/job/%s", jobID), map[string]string{"action": act}, nil, &conflictResp); err != nil {
+		if err := a.client.Put(ctx, fmt.Sprintf("/v1/api/configuration/import/job/%s", dlpclient.EscapeID(jobID)), map[string]string{"action": act}, nil, &conflictResp); err != nil {
 			resp.Diagnostics.AddError("Error Resolving Config Import Conflicts", err.Error())
 			return
 		}
@@ -315,7 +415,7 @@ func (a *ConfigImportAction) Invoke(ctx context.Context, req action.InvokeReques
 
 	rawJSON, _ := json.MarshalIndent(output, "", "  ")
 	completionMsg := fmt.Sprintf("Config import operation completed:\n%s", string(rawJSON))
-	tflog.Info(ctx, completionMsg)
+	tflog.Debug(ctx, completionMsg)
 	if resp != nil && resp.SendProgress != nil {
 		resp.SendProgress(action.InvokeProgressEvent{
 			Message: completionMsg,
@@ -395,7 +495,7 @@ func (d *ConfigExportJobDataSource) Read(ctx context.Context, req datasource.Rea
 
 	jobID := data.ExportJobId.ValueString()
 	var jobResp map[string]any
-	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/job/%s", jobID), nil, &jobResp); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/export/job/%s", dlpclient.EscapeID(jobID)), nil, &jobResp); err != nil {
 		resp.Diagnostics.AddError("Error Reading Config Export Job", err.Error())
 		return
 	}
@@ -483,7 +583,7 @@ func (d *ConfigImportJobDataSource) Read(ctx context.Context, req datasource.Rea
 
 	jobID := data.ImportJobId.ValueString()
 	var jobResp map[string]any
-	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/import/job/%s", jobID), nil, &jobResp); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/configuration/import/job/%s", dlpclient.EscapeID(jobID)), nil, &jobResp); err != nil {
 		resp.Diagnostics.AddError("Error Reading Config Import Job", err.Error())
 		return
 	}
@@ -511,11 +611,13 @@ type DryRunScanAction struct {
 }
 
 type DryRunScanActionModel struct {
-	DataProfile types.String `tfsdk:"data_profile"`
-	FilePath    types.String `tfsdk:"file_path"`
-	FileContent types.String `tfsdk:"file_content"`
-	FileName    types.String `tfsdk:"file_name"`
-	FileSha     types.String `tfsdk:"file_sha"`
+	DataProfile         types.String `tfsdk:"data_profile"`
+	FilePath            types.String `tfsdk:"file_path"`
+	FileContent         types.String `tfsdk:"file_content"`
+	FileName            types.String `tfsdk:"file_name"`
+	FileSha             types.String `tfsdk:"file_sha"`
+	SourceDataProfileId types.String `tfsdk:"source_data_profile_id"`
+	DryRunServiceName   types.String `tfsdk:"dry_run_service_name"`
 }
 
 func NewDryRunScanAction() action.Action {
@@ -548,6 +650,14 @@ func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, res
 			},
 			"file_sha": schema.StringAttribute{
 				Description: "SHA256 hex string of the file (computed automatically if omitted).",
+				Optional:    true,
+			},
+			"source_data_profile_id": schema.StringAttribute{
+				Description: "Optional source data profile ID.",
+				Optional:    true,
+			},
+			"dry_run_service_name": schema.StringAttribute{
+				Description: "Optional dry-run service name (defaults to prisma-access).",
 				Optional:    true,
 			},
 		},
@@ -610,23 +720,26 @@ func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest,
 	fileName := "sample.txt"
 
 	if !data.FilePath.IsNull() && data.FilePath.ValueString() != "" {
-		path := data.FilePath.ValueString()
-		b, err := os.ReadFile(path)
+		b, baseName, err := readValidatedUploadFile(data.FilePath.ValueString())
 		if err != nil {
-			resp.Diagnostics.AddError("File Read Error", fmt.Sprintf("Failed to read file %q: %s", path, err))
+			resp.Diagnostics.AddError("File Validation Error", err.Error())
 			return
 		}
 		fileBytes = b
-		fileName = path
+		fileName = baseName
 	} else if !data.FileContent.IsNull() {
 		fileBytes = []byte(data.FileContent.ValueString())
+		if len(fileBytes) == 0 || len(fileBytes) > MaxUploadFileSize {
+			resp.Diagnostics.AddError("File Validation Error", "file_content must be non-empty and at most 20MB.")
+			return
+		}
 	} else {
 		resp.Diagnostics.AddError("Missing Input", "Either 'file_path' or 'file_content' must be provided.")
 		return
 	}
 
 	if !data.FileName.IsNull() && data.FileName.ValueString() != "" {
-		fileName = data.FileName.ValueString()
+		fileName = filepath.Base(data.FileName.ValueString())
 	}
 
 	fileSha := ""
@@ -659,6 +772,18 @@ func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest,
 			Data:        fileBytes,
 		},
 	}
+	if !data.SourceDataProfileId.IsNull() && data.SourceDataProfileId.ValueString() != "" {
+		parts = append(parts, dlpclient.MultipartPart{
+			FieldName: "sourceDataProfileId",
+			Data:      []byte(data.SourceDataProfileId.ValueString()),
+		})
+	}
+	if !data.DryRunServiceName.IsNull() && data.DryRunServiceName.ValueString() != "" {
+		parts = append(parts, dlpclient.MultipartPart{
+			FieldName: "dryRunServiceName",
+			Data:      []byte(data.DryRunServiceName.ValueString()),
+		})
+	}
 
 	var scanResult map[string]any
 	if err := a.client.DoMultipart(ctx, "POST", "/v2/api/dry-run/scan", nil, parts, &scanResult); err != nil {
@@ -672,7 +797,7 @@ func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest,
 	}
 
 	completionMsg := fmt.Sprintf("Dry-run scan completed successfully:\n%s", string(rawJSON))
-	tflog.Info(ctx, completionMsg)
+	tflog.Debug(ctx, completionMsg)
 	if resp != nil && resp.SendProgress != nil {
 		resp.SendProgress(action.InvokeProgressEvent{
 			Message: completionMsg,
@@ -779,23 +904,26 @@ func (d *DryRunScanDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	fileName := "sample.txt"
 
 	if !data.FilePath.IsNull() && data.FilePath.ValueString() != "" {
-		path := data.FilePath.ValueString()
-		b, err := os.ReadFile(path)
+		b, baseName, err := readValidatedUploadFile(data.FilePath.ValueString())
 		if err != nil {
-			resp.Diagnostics.AddError("File Read Error", fmt.Sprintf("Failed to read file %q: %s", path, err))
+			resp.Diagnostics.AddError("File Validation Error", err.Error())
 			return
 		}
 		fileBytes = b
-		fileName = path
+		fileName = baseName
 	} else if !data.FileContent.IsNull() {
 		fileBytes = []byte(data.FileContent.ValueString())
+		if len(fileBytes) == 0 || len(fileBytes) > MaxUploadFileSize {
+			resp.Diagnostics.AddError("File Validation Error", "file_content must be non-empty and at most 20MB.")
+			return
+		}
 	} else {
 		resp.Diagnostics.AddError("Missing Input", "Either 'file_path' or 'file_content' must be provided.")
 		return
 	}
 
 	if !data.FileName.IsNull() && data.FileName.ValueString() != "" {
-		fileName = data.FileName.ValueString()
+		fileName = filepath.Base(data.FileName.ValueString())
 	}
 
 	fileSha := ""

@@ -91,7 +91,7 @@ func (r *ForwardProfileResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	var dto dlpclient.ForwardProfileDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -145,7 +145,7 @@ func (r *ForwardProfileResource) Update(ctx context.Context, req resource.Update
 	dto.ProfileID = &id
 
 	var updated dlpclient.ForwardProfileDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Forward Profile", err.Error())
 		return
 	}
@@ -175,7 +175,7 @@ func (r *ForwardProfileResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Forward Profile", err.Error())
 			return
@@ -230,7 +230,7 @@ func (d *ForwardProfileDataSource) Read(ctx context.Context, req datasource.Read
 	}
 
 	var dto dlpclient.ForwardProfileDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v1/api/forward-profile/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Forward Profile", err.Error())
 		return
 	}
@@ -319,7 +319,7 @@ func forwardProfileModelToDTO(ctx context.Context, m *models.ForwardProfileModel
 		Enabled: m.Enabled.ValueBool(),
 	}
 
-	if !m.Id.IsNull() && m.Id.ValueString() != "" {
+	if !m.Id.IsNull() && !m.Id.IsUnknown() && m.Id.ValueString() != "" {
 		v := m.Id.ValueString()
 		dto.ID = &v
 		dto.ProfileID = &v
