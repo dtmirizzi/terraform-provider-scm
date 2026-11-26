@@ -199,9 +199,13 @@ func dlpAlertSettingsMergeDTO(m *models.DlpAlertSettingsModel, dto *dlpclient.Al
 	}
 	if dto.IncidentNotificationEnablement != nil {
 		m.IncidentNotificationEnablement = types.BoolValue(*dto.IncidentNotificationEnablement)
+	} else if m.IncidentNotificationEnablement.IsUnknown() {
+		m.IncidentNotificationEnablement = types.BoolNull()
 	}
 	if dto.DetectionExemptionPeriodMinutes != nil {
 		m.DetectionExemptionPeriodMinutes = types.Int64Value(*dto.DetectionExemptionPeriodMinutes)
+	} else if m.DetectionExemptionPeriodMinutes.IsUnknown() {
+		m.DetectionExemptionPeriodMinutes = types.Int64Null()
 	}
 }
 

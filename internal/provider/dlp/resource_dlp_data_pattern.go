@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -103,7 +104,7 @@ func (r *DataPatternResource) Read(ctx context.Context, req resource.ReadRequest
 
 	tflog.Debug(ctx, "Reading DLP Data Pattern", map[string]any{"id": id})
 	var dto dlpclient.DataPatternDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", id), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -133,6 +134,10 @@ func (r *DataPatternResource) Update(ctx context.Context, req resource.UpdateReq
 	if id == "" {
 		id = plan.Tfid.ValueString()
 	}
+	if id == "" {
+		resp.Diagnostics.AddError("Missing ID", "Cannot update Data Pattern without an ID.")
+		return
+	}
 
 	dto, diags := dataPatternModelToDTO(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -153,7 +158,7 @@ func (r *DataPatternResource) Update(ctx context.Context, req resource.UpdateReq
 
 	tflog.Debug(ctx, "Updating DLP Data Pattern", map[string]any{"id": id})
 	var updated dlpclient.DataPatternDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", id), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Data Pattern", err.Error())
 		return
 	}
@@ -183,7 +188,7 @@ func (r *DataPatternResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Data Pattern", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", id), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Data Pattern", err.Error())
 			return
@@ -238,7 +243,7 @@ func (d *DataPatternDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	var dto dlpclient.DataPatternDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", id), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Data Pattern", err.Error())
 		return
 	}

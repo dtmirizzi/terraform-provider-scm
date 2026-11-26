@@ -128,6 +128,9 @@ var DataPatternResourceSchema = schema.Schema{
 		"type": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "The type of data pattern: custom, predefined, or file_property.",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"status": schema.StringAttribute{
 			Computed:            true,
@@ -436,14 +439,23 @@ var DictionaryResourceSchema = schema.Schema{
 		"category": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "Category of the dictionary (e.g., Confidential, Financial, Healthcare, etc.).",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"original_file_name": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "Original file name of the dictionary file (.txt or .csv).",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"region_name": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "Region for the dictionary (e.g. us, eu).",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"is_case_sensitive": schema.BoolAttribute{
 			Optional:            true,
@@ -643,6 +655,9 @@ var DocumentTypeResourceSchema = schema.Schema{
 		"detection_technique": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "Detection technique: document_fingerprint or trainable_classifier.",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"original_file_name": schema.StringAttribute{
 			Required:            true,
@@ -842,6 +857,9 @@ var EdmDatasetResourceSchema = schema.Schema{
 		"name": schema.StringAttribute{
 			Required:            true,
 			MarkdownDescription: "The name of the EDM dataset.",
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
 		},
 		"region_name": schema.StringAttribute{
 			Computed:            true,

@@ -88,10 +88,9 @@ func setupMockServer(t *testing.T) (*httptest.Server, *sync.Mutex, map[string]an
 			if item, ok := ocrMap[svc]; ok {
 				_ = json.NewEncoder(w).Encode(item)
 			} else {
+				w.WriteHeader(http.StatusNotFound)
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"target_service_name": svc,
-					"ocr_enablement":      "DISABLED",
-					"tenant_id":           "tenant-123",
+					"error": "OCR enablement not found for target service",
 				})
 			}
 
@@ -469,5 +468,29 @@ func TestAlertSettingsAndChannelsCRUD(t *testing.T) {
 	}
 	if b, ok := elems["email-dlp"].(types.Bool); !ok || b.ValueBool() {
 		t.Errorf("expected email-dlp channel=false")
+	}
+
+	// 4. Test OCR enablement not found handling
+	dsOcr := NewDlpOcrEnablementDataSource().(datasource.DataSourceWithConfigure)
+	var dsOcrCfgResp datasource.ConfigureResponse
+	dsOcr.Configure(ctx, datasource.ConfigureRequest{ProviderData: providerData}, &dsOcrCfgResp)
+	if dsOcrCfgResp.Diagnostics.HasError() {
+		t.Fatalf("ocr ds configure failed: %v", dsOcrCfgResp.Diagnostics)
+	}
+
+	dsNotFoundCfg := models.DlpOcrEnablementModel{
+		TargetServiceName: types.StringValue("ngfw"),
+	}
+	var notFoundState tfsdk.State
+	notFoundState.Schema = models.DlpOcrEnablementDataSourceSchema
+	_ = notFoundState.Set(ctx, &dsNotFoundCfg)
+	notFoundCfgVal := tfsdk.Config{
+		Raw:    notFoundState.Raw,
+		Schema: models.DlpOcrEnablementDataSourceSchema,
+	}
+	notFoundDsResp := datasource.ReadResponse{State: tfsdk.State{Schema: models.DlpOcrEnablementDataSourceSchema}}
+	dsOcr.Read(ctx, datasource.ReadRequest{Config: notFoundCfgVal}, &notFoundDsResp)
+	if !notFoundDsResp.Diagnostics.HasError() {
+		t.Errorf("expected error diagnostic when target_service_name not found in OCR list, got none")
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
 	models "github.com/paloaltonetworks/terraform-provider-scm/internal/models/dlp"
@@ -67,7 +66,7 @@ func (r *dlpOcrEnablementResource) Create(ctx context.Context, req resource.Crea
 		resp.Diagnostics.AddError("Error setting OCR enablement", fmt.Sprintf("Failed to call PUT /v2/api/ocr: %s", err))
 		return
 	}
-	putResp := parseOcrResponse(raw, plan.TargetServiceName.ValueString())
+	putResp, _ := parseOcrResponse(raw, plan.TargetServiceName.ValueString())
 
 	state := plan
 	if putResp.TenantID != nil {
@@ -105,7 +104,11 @@ func (r *dlpOcrEnablementResource) Read(ctx context.Context, req resource.ReadRe
 		resp.Diagnostics.AddError("Error reading OCR enablement", fmt.Sprintf("Failed to call GET /v2/api/ocr: %s", err))
 		return
 	}
-	getResp := parseOcrResponse(raw, targetSvc)
+	getResp, found := parseOcrResponse(raw, targetSvc)
+	if !found {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 
 	state.TargetServiceName = types.StringValue(targetSvc)
 	if getResp.OcrEnablement != "" {
@@ -138,7 +141,7 @@ func (r *dlpOcrEnablementResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Error updating OCR enablement", fmt.Sprintf("Failed to call PUT /v2/api/ocr: %s", err))
 		return
 	}
-	putResp := parseOcrResponse(raw, plan.TargetServiceName.ValueString())
+	putResp, _ := parseOcrResponse(raw, plan.TargetServiceName.ValueString())
 
 	state := plan
 	if putResp.TenantID != nil {
@@ -169,7 +172,10 @@ func (r *dlpOcrEnablementResource) Delete(ctx context.Context, req resource.Dele
 		}
 		var raw json.RawMessage
 		if err := r.client.Put(ctx, "/v2/api/ocr", nil, dto, &raw); err != nil {
-			tflog.Warn(ctx, fmt.Sprintf("Failed to disable OCR on delete: %s", err))
+			if !dlpclient.IsNotFound(err) {
+				resp.Diagnostics.AddError("Error disabling OCR enablement on delete", fmt.Sprintf("Failed to call PUT /v2/api/ocr: %s", err))
+				return
+			}
 		}
 	}
 	resp.State.RemoveResource(ctx)
@@ -227,7 +233,11 @@ func (d *dlpOcrEnablementDataSource) Read(ctx context.Context, req datasource.Re
 		resp.Diagnostics.AddError("Error reading OCR enablement", fmt.Sprintf("Failed to call GET /v2/api/ocr: %s", err))
 		return
 	}
-	getResp := parseOcrResponse(raw, targetSvc)
+	getResp, found := parseOcrResponse(raw, targetSvc)
+	if !found {
+		resp.Diagnostics.AddError("OCR Enablement Not Found", fmt.Sprintf("No OCR enablement found for target service %q", targetSvc))
+		return
+	}
 
 	state := config
 	state.TargetServiceName = types.StringValue(targetSvc)
@@ -244,25 +254,28 @@ func (d *dlpOcrEnablementDataSource) Read(ctx context.Context, req datasource.Re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func parseOcrResponse(raw json.RawMessage, targetSvc string) dlpclient.OcrEnablementDTO {
+func parseOcrResponse(raw json.RawMessage, targetSvc string) (dlpclient.OcrEnablementDTO, bool) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
-		return dlpclient.OcrEnablementDTO{TargetServiceName: targetSvc}
+		return dlpclient.OcrEnablementDTO{TargetServiceName: targetSvc}, targetSvc == ""
 	}
 	if trimmed[0] == '[' {
 		var list []dlpclient.OcrEnablementDTO
 		if err := json.Unmarshal(trimmed, &list); err == nil {
 			for _, item := range list {
 				if strings.EqualFold(item.TargetServiceName, targetSvc) || strings.EqualFold(item.ServiceName, targetSvc) {
-					return item
+					return item, true
 				}
 			}
-			if len(list) > 0 {
-				return list[0]
-			}
+			return dlpclient.OcrEnablementDTO{}, false
 		}
 	}
 	var single dlpclient.OcrEnablementDTO
-	_ = json.Unmarshal(trimmed, &single)
-	return single
+	if err := json.Unmarshal(trimmed, &single); err == nil {
+		if targetSvc == "" || strings.EqualFold(single.TargetServiceName, targetSvc) || strings.EqualFold(single.ServiceName, targetSvc) {
+			return single, true
+		}
+		return dlpclient.OcrEnablementDTO{}, false
+	}
+	return single, false
 }

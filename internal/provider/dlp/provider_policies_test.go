@@ -1007,6 +1007,14 @@ func TestPolicies_Actions(t *testing.T) {
 	if importInvokeResp.Diagnostics.HasError() {
 		t.Fatalf("ConfigImport Invoke failed: %v", importInvokeResp.Diagnostics)
 	}
+
+	// 4. File Upload Path Validation (M9: reject /etc/passwd and ~/.ssh/*)
+	if _, _, err := readValidatedUploadFile("/etc/passwd"); err == nil {
+		t.Fatal("Expected readValidatedUploadFile to reject /etc/passwd")
+	}
+	if _, _, err := readValidatedUploadFile(""); err == nil {
+		t.Fatal("Expected readValidatedUploadFile to reject empty path")
+	}
 }
 
 // Suppress unused imports check

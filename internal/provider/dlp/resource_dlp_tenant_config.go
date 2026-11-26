@@ -132,6 +132,12 @@ func (r *dlpTenantConfigResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
+	var state models.DlpTenantConfigModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	dto := dlpTenantConfigModelToDTO(&plan)
 
 	errMsgs, err := dlpclient.ValidateTenantCommonConfig(dto)
@@ -145,7 +151,8 @@ func (r *dlpTenantConfigResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	if !plan.EdmEnablement.IsNull() && strings.EqualFold(plan.EdmEnablement.ValueString(), "REQUESTED") {
+	if !plan.EdmEnablement.IsNull() && strings.EqualFold(plan.EdmEnablement.ValueString(), "REQUESTED") &&
+		(state.EdmEnablement.IsNull() || !strings.EqualFold(state.EdmEnablement.ValueString(), "REQUESTED")) {
 		var enableResp map[string]any
 		if err := r.client.Post(ctx, "/v1/api/edm-dataset/enable", nil, map[string]any{}, &enableResp); err != nil {
 			resp.Diagnostics.AddError("Error enabling EDM dataset", fmt.Sprintf("Failed to call POST /v1/api/edm-dataset/enable: %s", err))
@@ -165,14 +172,14 @@ func (r *dlpTenantConfigResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	state := plan
-	dlpTenantConfigMergeDTO(&state, &getResp)
-	if state.Id.IsNull() || state.Id.ValueString() == "" {
-		state.Id = types.StringValue("tenant_config")
+	updatedState := plan
+	dlpTenantConfigMergeDTO(&updatedState, &getResp)
+	if updatedState.Id.IsNull() || updatedState.Id.ValueString() == "" {
+		updatedState.Id = types.StringValue("tenant_config")
 	}
-	state.Tfid = types.StringValue(state.Id.ValueString())
+	updatedState.Tfid = types.StringValue(updatedState.Id.ValueString())
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &updatedState)...)
 }
 
 func (r *dlpTenantConfigResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -685,3 +685,129 @@ func TestProfiles_DataFilteringProfile_CRUD(t *testing.T) {
 		t.Fatalf("Expected at least 1 filtering profile in list, got %d", fpListResult.Total.ValueInt64())
 	}
 }
+
+// TestProfiles_ExpressionTreeJSON_HCLStability verifies that when expression_tree_json is set
+// while structured expression fields are left null, reading the server's response preserves
+// expression_tree_json and leaves structured fields null so Terraform does not detect diffs.
+func TestProfiles_ExpressionTreeJSON_HCLStability(t *testing.T) {
+	server, _, _ := setupProfilesMockServer(t)
+	defer server.Close()
+
+	client := newTestDLPClient(server.URL)
+	provData := map[string]any{"dlp": client}
+	ctx := context.Background()
+
+	res := NewDataProfileResource().(resource.ResourceWithConfigure)
+	var cfgResp resource.ConfigureResponse
+	res.Configure(ctx, resource.ConfigureRequest{ProviderData: provData}, &cfgResp)
+	if cfgResp.Diagnostics.HasError() {
+		t.Fatalf("Configure failed: %v", cfgResp.Diagnostics)
+	}
+
+	rawJSON := `{"operator_type":"and","rule_item":null,"sub_expressions":[{"operator_type":null,"rule_item":{"id":"pat-test-1","detection_technique":"regex","occurrence_operator_type":"any","confidence_level":"high","match_type":"include","by_unique_count":false},"sub_expressions":[]}]}`
+
+	plan := models.DataProfileResourceModel{
+		Name:                  types.StringValue("Raw JSON Profile"),
+		ProfileType:           types.StringValue("advanced"),
+		ProfileStatus:         types.StringValue("active"),
+		IsGranularDataProfile: types.BoolValue(false),
+		DetectionRules: []models.DataProfileDetectionRuleModel{
+			{
+				RuleType: types.StringValue("expression_tree"),
+				ExpressionTree: &models.DataProfileExpressionTreeModel{
+					OperatorType:       types.StringNull(),
+					RuleItem:           nil,
+					SubExpressions:     nil,
+					ExpressionTreeJson: types.StringValue(rawJSON),
+				},
+			},
+		},
+	}
+
+	planVal := tfsdk.Plan{Schema: models.DataProfileResourceSchema}
+	planVal.Set(ctx, &plan)
+
+	stateVal := tfsdk.State{Schema: models.DataProfileResourceSchema}
+
+	createReq := resource.CreateRequest{Plan: planVal}
+	createResp := resource.CreateResponse{State: stateVal}
+	res.Create(ctx, createReq, &createResp)
+	if createResp.Diagnostics.HasError() {
+		t.Fatalf("Create failed: %v", createResp.Diagnostics)
+	}
+
+	var createdState models.DataProfileResourceModel
+	createResp.State.Get(ctx, &createdState)
+	if createdState.Id.IsNull() || createdState.Id.ValueString() == "" {
+		t.Fatalf("Expected non-empty ID")
+	}
+
+	rule := createdState.DetectionRules[0]
+	if rule.ExpressionTree == nil {
+		t.Fatalf("Expected expression_tree non-nil")
+	}
+	if rule.ExpressionTree.ExpressionTreeJson.IsNull() {
+		t.Fatalf("Expected expression_tree_json preserved")
+	}
+	if !rule.ExpressionTree.OperatorType.IsNull() {
+		t.Fatalf("Expected structured operator_type to remain null")
+	}
+	if rule.ExpressionTree.RuleItem != nil {
+		t.Fatalf("Expected structured rule_item to remain nil")
+	}
+	if len(rule.ExpressionTree.SubExpressions) != 0 {
+		t.Fatalf("Expected structured sub_expressions to remain empty")
+	}
+
+	// Now test Read
+	readReq := resource.ReadRequest{State: createResp.State}
+	readResp := resource.ReadResponse{State: tfsdk.State{Schema: models.DataProfileResourceSchema}}
+	res.Read(ctx, readReq, &readResp)
+	if readResp.Diagnostics.HasError() {
+		t.Fatalf("Read failed: %v", readResp.Diagnostics)
+	}
+
+	var readState models.DataProfileResourceModel
+	readResp.State.Get(ctx, &readState)
+	readRule := readState.DetectionRules[0]
+	if readRule.ExpressionTree.ExpressionTreeJson.IsNull() {
+		t.Fatalf("Expected expression_tree_json preserved on read")
+	}
+	if !readRule.ExpressionTree.OperatorType.IsNull() {
+		t.Fatalf("Expected structured operator_type to remain null on read")
+	}
+}
+
+// TestProfiles_DataFilteringProfile_MissingIDError verifies that creating a filtering profile
+// with non-existent parent data_profile_id and no explicit id returns a diagnostic error.
+func TestProfiles_DataFilteringProfile_MissingIDError(t *testing.T) {
+	server, _, _ := setupProfilesMockServer(t)
+	defer server.Close()
+
+	client := newTestDLPClient(server.URL)
+	provData := map[string]any{"dlp": client}
+	ctx := context.Background()
+
+	res := NewDataFilteringProfileResource().(resource.ResourceWithConfigure)
+	var cfgResp resource.ConfigureResponse
+	res.Configure(ctx, resource.ConfigureRequest{ProviderData: provData}, &cfgResp)
+	if cfgResp.Diagnostics.HasError() {
+		t.Fatalf("Configure failed: %v", cfgResp.Diagnostics)
+	}
+
+	fpPlan := models.DataFilteringProfileResourceModel{
+		DataProfileId: types.Int64Value(999999), // non-existent parent
+		FileBased:     types.BoolValue(true),
+		NonFileBased:  types.BoolValue(true),
+	}
+
+	planVal := tfsdk.Plan{Schema: models.DataFilteringProfileResourceSchema}
+	planVal.Set(ctx, &fpPlan)
+
+	createReq := resource.CreateRequest{Plan: planVal}
+	createResp := resource.CreateResponse{State: tfsdk.State{Schema: models.DataFilteringProfileResourceSchema}}
+	res.Create(ctx, createReq, &createResp)
+	if !createResp.Diagnostics.HasError() {
+		t.Fatalf("Expected error when data filtering profile cannot resolve ID")
+	}
+}
