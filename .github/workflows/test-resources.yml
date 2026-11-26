@@ -40,7 +40,7 @@ jobs:
       # import tests against in-process mock backends (no credentials needed;
       # uses the terraform CLI installed above).
       - name: DLP unit and Terraform-level tests
-        run: go test ./internal/dlpclient/... ./internal/provider/dlp/... ./internal/provider
+        run: go test ./internal/provider/dlp/... ./internal/provider/dlp/... ./internal/provider
 
       - name: Configure dev_overrides
         run: |

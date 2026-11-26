@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp/client"
 )
 
 func extractDLPClient(providerData any, diags *diag.Diagnostics) *dlpclient.Client {

@@ -14,8 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
 	models "github.com/paloaltonetworks/terraform-provider-scm/internal/models/dlp"
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp/client"
 )
 
 // setupMockServer sets up an httptest server simulating DLP tenant config endpoints.

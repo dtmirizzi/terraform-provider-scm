@@ -17,12 +17,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	setup "github.com/paloaltonetworks/scm-go"
 
-	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
 	tfProviderConfigOperations "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/config_operations"
 	tfProviderConfigSetup "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/config_setup"
 	tfProviderDeploymentServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/deployment_services"
 	tfProviderDeviceSettings "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/device_settings"
 	tfProviderDlp "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp"
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp/client"
 	tfProviderIdentityServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/identity_services"
 	tfProviderMobileAgent "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/mobile_agent"
 	tfProviderNetworkServices "github.com/paloaltonetworks/terraform-provider-scm/internal/provider/network_services"

@@ -36,7 +36,7 @@ import (
 	rt "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
-	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp/client"
 )
 
 // dlpTestProvider is a minimal "scm" provider exposing only the DLP package,

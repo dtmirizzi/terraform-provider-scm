@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/paloaltonetworks/terraform-provider-scm/internal/dlpclient"
+	"github.com/paloaltonetworks/terraform-provider-scm/internal/provider/dlp/client"
 )
 
 // Ensure action and data source implementation interfaces are satisfied.
