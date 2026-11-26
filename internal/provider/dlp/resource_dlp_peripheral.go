@@ -33,8 +33,8 @@ type PeripheralResource struct {
 	client *dlpclient.Client
 }
 
-func (r *PeripheralResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_peripheral"
+func (r *PeripheralResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_peripheral"
 }
 
 func (r *PeripheralResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -203,8 +203,8 @@ type PeripheralDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *PeripheralDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_peripheral"
+func (d *PeripheralDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_peripheral"
 }
 
 func (d *PeripheralDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -260,8 +260,8 @@ type PeripheralListDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *PeripheralListDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_peripheral_list"
+func (d *PeripheralListDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_peripheral_list"
 }
 
 func (d *PeripheralListDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

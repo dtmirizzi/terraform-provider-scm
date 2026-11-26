@@ -35,7 +35,7 @@ type dlpOcrEnablementResource struct {
 }
 
 func (r *dlpOcrEnablementResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_ocr_enablement"
+	resp.TypeName = req.ProviderTypeName + "_dlp_ocr_enablement"
 }
 
 func (r *dlpOcrEnablementResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -205,7 +205,7 @@ type dlpOcrEnablementDataSource struct {
 }
 
 func (d *dlpOcrEnablementDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_ocr_enablement"
+	resp.TypeName = req.ProviderTypeName + "_dlp_ocr_enablement"
 }
 
 func (d *dlpOcrEnablementDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

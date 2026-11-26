@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"reflect"
 	"strings"
 
@@ -36,8 +37,8 @@ type EndpointPolicyResource struct {
 	client *dlpclient.Client
 }
 
-func (r *EndpointPolicyResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_endpoint_policy"
+func (r *EndpointPolicyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_endpoint_policy"
 }
 
 func (r *EndpointPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -206,8 +207,8 @@ type EndpointPolicyDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *EndpointPolicyDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_endpoint_policy"
+func (d *EndpointPolicyDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_endpoint_policy"
 }
 
 func (d *EndpointPolicyDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -263,8 +264,8 @@ type EndpointPolicyListDataSource struct {
 	client *dlpclient.Client
 }
 
-func (d *EndpointPolicyListDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_endpoint_policy_list"
+func (d *EndpointPolicyListDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_endpoint_policy_list"
 }
 
 func (d *EndpointPolicyListDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -389,8 +390,8 @@ func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO, prior *models.En
 		Type:         types.StringValue(dto.Type),
 		Severity:     types.StringValue(dto.Severity),
 		Priority:     types.Int64Null(),
-		ScopeJson:    types.StringNull(),
-		ResponseJson: types.StringNull(),
+		ScopeJson:    jsontypes.NewNormalizedNull(),
+		ResponseJson: jsontypes.NewNormalizedNull(),
 	}
 
 	if dto.Description != nil {
@@ -405,10 +406,10 @@ func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO, prior *models.En
 		if prior != nil && !prior.ScopeJson.IsNull() && !prior.ScopeJson.IsUnknown() && jsonStringsSemanticallyEqual(prior.ScopeJson.ValueString(), serverScope) {
 			m.ScopeJson = prior.ScopeJson
 		} else {
-			m.ScopeJson = types.StringValue(serverScope)
+			m.ScopeJson = jsontypes.NewNormalizedValue(serverScope)
 		}
 	} else {
-		m.ScopeJson = types.StringValue("{}")
+		m.ScopeJson = jsontypes.NewNormalizedValue("{}")
 	}
 
 	if len(dto.Response) > 0 {
@@ -416,10 +417,10 @@ func endpointPolicyDTOToModel(dto *dlpclient.EndpointPolicyDTO, prior *models.En
 		if prior != nil && !prior.ResponseJson.IsNull() && !prior.ResponseJson.IsUnknown() && jsonStringsSemanticallyEqual(prior.ResponseJson.ValueString(), serverResp) {
 			m.ResponseJson = prior.ResponseJson
 		} else {
-			m.ResponseJson = types.StringValue(serverResp)
+			m.ResponseJson = jsontypes.NewNormalizedValue(serverResp)
 		}
 	} else {
-		m.ResponseJson = types.StringValue("{}")
+		m.ResponseJson = jsontypes.NewNormalizedValue("{}")
 	}
 
 	return m, diags

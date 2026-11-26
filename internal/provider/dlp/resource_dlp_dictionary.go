@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -37,7 +36,7 @@ type DictionaryResource struct {
 }
 
 func (r *DictionaryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_dictionary"
+	resp.TypeName = req.ProviderTypeName + "_dlp_dictionary"
 }
 
 func (r *DictionaryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -95,7 +94,7 @@ func (r *DictionaryResource) Create(ctx context.Context, req resource.CreateRequ
 		finalDTO = created
 	} else {
 		readParams := map[string]string{"keywords": "true"}
-		if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(createdID)), readParams, &finalDTO); err != nil {
+		if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(createdID)), readParams, &finalDTO); err != nil {
 			finalDTO = created
 		}
 	}
@@ -128,7 +127,7 @@ func (r *DictionaryResource) Read(ctx context.Context, req resource.ReadRequest,
 	tflog.Debug(ctx, "Reading DLP Dictionary", map[string]any{"id": id})
 	var dto dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(id)), params, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -202,11 +201,13 @@ func (r *DictionaryResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 	dto.ID = &id
 
-	// If keyword_list in plan is null or empty, preserve existing keywords from state
-	if plan.KeywordList.IsNull() || len(keywords) == 0 {
+	// If keyword_list is not configured (null/unknown in the plan), preserve the
+	// existing keywords from state instead of uploading an empty keyword file.
+	// An explicit empty list is sent as-is.
+	if plan.KeywordList.IsNull() || plan.KeywordList.IsUnknown() {
 		if !state.KeywordList.IsNull() {
 			var stateKeywords []string
-			diags.Append(state.KeywordList.ElementsAs(ctx, &stateKeywords, false)...)
+			resp.Diagnostics.Append(state.KeywordList.ElementsAs(ctx, &stateKeywords, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
@@ -230,14 +231,14 @@ func (r *DictionaryResource) Update(ctx context.Context, req resource.UpdateRequ
 	tflog.Debug(ctx, "Updating DLP Dictionary via multipart PUT", map[string]any{"id": id})
 	var updated dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	if err := r.client.DoMultipart(ctx, "PUT", fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, parts, &updated); err != nil {
+	if err := r.client.DoMultipart(ctx, "PUT", fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(id)), params, parts, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Dictionary", err.Error())
 		return
 	}
 
 	// Fetch refreshed dictionary with keywords
 	var finalDTO dlpclient.DictionaryDTO
-	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &finalDTO); err != nil {
+	if err := r.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(id)), params, &finalDTO); err != nil {
 		finalDTO = updated
 	}
 
@@ -266,7 +267,7 @@ func (r *DictionaryResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Dictionary", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Dictionary", err.Error())
 			return
@@ -296,7 +297,7 @@ type DictionaryDataSource struct {
 }
 
 func (d *DictionaryDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_dictionary"
+	resp.TypeName = req.ProviderTypeName + "_dlp_dictionary"
 }
 
 func (d *DictionaryDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -322,7 +323,7 @@ func (d *DictionaryDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 	var dto dlpclient.DictionaryDTO
 	params := map[string]string{"keywords": "true"}
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", url.PathEscape(id)), params, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/dictionaries/%s", dlpclient.EscapeID(id)), params, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Dictionary", err.Error())
 		return
 	}
@@ -354,7 +355,7 @@ type DictionaryListDataSource struct {
 }
 
 func (d *DictionaryListDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_dictionary_list"
+	resp.TypeName = req.ProviderTypeName + "_dlp_dictionary_list"
 }
 
 func (d *DictionaryListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

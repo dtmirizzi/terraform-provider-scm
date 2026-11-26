@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -36,7 +35,7 @@ type DataPatternResource struct {
 }
 
 func (r *DataPatternResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_data_pattern"
+	resp.TypeName = req.ProviderTypeName + "_dlp_data_pattern"
 }
 
 func (r *DataPatternResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -104,7 +103,7 @@ func (r *DataPatternResource) Read(ctx context.Context, req resource.ReadRequest
 
 	tflog.Debug(ctx, "Reading DLP Data Pattern", map[string]any{"id": id})
 	var dto dlpclient.DataPatternDTO
-	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, &dto)
+	err := r.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", dlpclient.EscapeID(id)), nil, &dto)
 	if err != nil {
 		if dlpclient.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -158,7 +157,7 @@ func (r *DataPatternResource) Update(ctx context.Context, req resource.UpdateReq
 
 	tflog.Debug(ctx, "Updating DLP Data Pattern", map[string]any{"id": id})
 	var updated dlpclient.DataPatternDTO
-	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, dto, &updated); err != nil {
+	if err := r.client.Put(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", dlpclient.EscapeID(id)), nil, dto, &updated); err != nil {
 		resp.Diagnostics.AddError("Error Updating DLP Data Pattern", err.Error())
 		return
 	}
@@ -188,7 +187,7 @@ func (r *DataPatternResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 
 	tflog.Debug(ctx, "Deleting DLP Data Pattern", map[string]any{"id": id})
-	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil); err != nil {
+	if err := r.client.Delete(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", dlpclient.EscapeID(id)), nil); err != nil {
 		if !dlpclient.IsNotFound(err) {
 			resp.Diagnostics.AddError("Error Deleting DLP Data Pattern", err.Error())
 			return
@@ -218,7 +217,7 @@ type DataPatternDataSource struct {
 }
 
 func (d *DataPatternDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_data_pattern"
+	resp.TypeName = req.ProviderTypeName + "_dlp_data_pattern"
 }
 
 func (d *DataPatternDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -243,7 +242,7 @@ func (d *DataPatternDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	var dto dlpclient.DataPatternDTO
-	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", url.PathEscape(id)), nil, &dto); err != nil {
+	if err := d.client.Get(ctx, fmt.Sprintf("/v2/api/data-patterns/%s", dlpclient.EscapeID(id)), nil, &dto); err != nil {
 		resp.Diagnostics.AddError("Error Reading DLP Data Pattern", err.Error())
 		return
 	}
@@ -275,7 +274,7 @@ type DataPatternListDataSource struct {
 }
 
 func (d *DataPatternListDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_data_pattern_list"
+	resp.TypeName = req.ProviderTypeName + "_dlp_data_pattern_list"
 }
 
 func (d *DataPatternListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

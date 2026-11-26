@@ -138,8 +138,8 @@ func NewConfigExportAction() action.Action {
 	return &ConfigExportAction{}
 }
 
-func (a *ConfigExportAction) Metadata(_ context.Context, _ action.MetadataRequest, resp *action.MetadataResponse) {
-	resp.TypeName = "scm_dlp_config_export"
+func (a *ConfigExportAction) Metadata(_ context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_config_export"
 }
 
 func (a *ConfigExportAction) Schema(_ context.Context, _ action.SchemaRequest, resp *action.SchemaResponse) {
@@ -291,8 +291,8 @@ func NewConfigImportAction() action.Action {
 	return &ConfigImportAction{}
 }
 
-func (a *ConfigImportAction) Metadata(_ context.Context, _ action.MetadataRequest, resp *action.MetadataResponse) {
-	resp.TypeName = "scm_dlp_config_import"
+func (a *ConfigImportAction) Metadata(_ context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_config_import"
 }
 
 func (a *ConfigImportAction) Schema(_ context.Context, _ action.SchemaRequest, resp *action.SchemaResponse) {
@@ -446,8 +446,8 @@ func NewConfigExportJobDataSource() datasource.DataSource {
 	return &ConfigExportJobDataSource{}
 }
 
-func (d *ConfigExportJobDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_config_export_job"
+func (d *ConfigExportJobDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_config_export_job"
 }
 
 func (d *ConfigExportJobDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -542,8 +542,8 @@ func NewConfigImportJobDataSource() datasource.DataSource {
 	return &ConfigImportJobDataSource{}
 }
 
-func (d *ConfigImportJobDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_config_import_job"
+func (d *ConfigImportJobDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_config_import_job"
 }
 
 func (d *ConfigImportJobDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -624,8 +624,8 @@ func NewDryRunScanAction() action.Action {
 	return &DryRunScanAction{}
 }
 
-func (a *DryRunScanAction) Metadata(_ context.Context, _ action.MetadataRequest, resp *action.MetadataResponse) {
-	resp.TypeName = "scm_dlp_dry_run_scan"
+func (a *DryRunScanAction) Metadata(_ context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_dry_run_scan"
 }
 
 func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, resp *action.SchemaResponse) {
@@ -832,8 +832,8 @@ func NewDryRunScanDataSource() datasource.DataSource {
 	return &DryRunScanDataSource{}
 }
 
-func (d *DryRunScanDataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_dry_run_scan"
+func (d *DryRunScanDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_dry_run_scan"
 }
 
 func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

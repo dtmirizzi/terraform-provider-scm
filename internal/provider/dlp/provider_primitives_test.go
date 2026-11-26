@@ -916,8 +916,9 @@ func TestPrimitivesEdmDataset(t *testing.T) {
 		t.Fatalf("Delete EDM dataset failed: %v", delResp.Diagnostics.Errors())
 	}
 
-	if _, ok := backend.edmDatasets[datasetID]; ok {
-		t.Errorf("EDM dataset still exists in backend after Delete")
+	// Delete only removes the adopted dataset from state; the uploaded data must remain.
+	if _, ok := backend.edmDatasets[datasetID]; !ok {
+		t.Errorf("EDM dataset was deleted from backend; Delete must only remove it from state")
 	}
 
 	// 5. Test M13: index_status == "DELETED" treats resource as deleted in Read
@@ -950,7 +951,7 @@ func TestPrimitivesSchemaAndMetadata(t *testing.T) {
 
 	pRes := NewDataPatternResource()
 	var pMeta resource.MetadataResponse
-	pRes.Metadata(ctx, resource.MetadataRequest{}, &pMeta)
+	pRes.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "scm"}, &pMeta)
 	if pMeta.TypeName != "scm_dlp_data_pattern" {
 		t.Errorf("unexpected type name: %s", pMeta.TypeName)
 	}
@@ -963,21 +964,21 @@ func TestPrimitivesSchemaAndMetadata(t *testing.T) {
 
 	dRes := NewDictionaryResource()
 	var dMeta resource.MetadataResponse
-	dRes.Metadata(ctx, resource.MetadataRequest{}, &dMeta)
+	dRes.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "scm"}, &dMeta)
 	if dMeta.TypeName != "scm_dlp_dictionary" {
 		t.Errorf("unexpected type name: %s", dMeta.TypeName)
 	}
 
 	dtRes := NewDocumentTypeResource()
 	var dtMeta resource.MetadataResponse
-	dtRes.Metadata(ctx, resource.MetadataRequest{}, &dtMeta)
+	dtRes.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "scm"}, &dtMeta)
 	if dtMeta.TypeName != "scm_dlp_document_type" {
 		t.Errorf("unexpected type name: %s", dtMeta.TypeName)
 	}
 
 	edmRes := NewEdmDatasetResource()
 	var edmMeta resource.MetadataResponse
-	edmRes.Metadata(ctx, resource.MetadataRequest{}, &edmMeta)
+	edmRes.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "scm"}, &edmMeta)
 	if edmMeta.TypeName != "scm_dlp_edm_dataset" {
 		t.Errorf("unexpected type name: %s", edmMeta.TypeName)
 	}

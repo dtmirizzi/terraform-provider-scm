@@ -34,7 +34,7 @@ type dlpAlertSettingsResource struct {
 }
 
 func (r *dlpAlertSettingsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_alert_settings"
+	resp.TypeName = req.ProviderTypeName + "_dlp_alert_settings"
 }
 
 func (r *dlpAlertSettingsResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -149,7 +149,7 @@ type dlpAlertSettingsDataSource struct {
 }
 
 func (d *dlpAlertSettingsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_alert_settings"
+	resp.TypeName = req.ProviderTypeName + "_dlp_alert_settings"
 }
 
 func (d *dlpAlertSettingsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -227,7 +227,7 @@ type dlpTenantChannelsDataSource struct {
 }
 
 func (d *dlpTenantChannelsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_tenant_channels"
+	resp.TypeName = req.ProviderTypeName + "_dlp_tenant_channels"
 }
 
 func (d *dlpTenantChannelsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

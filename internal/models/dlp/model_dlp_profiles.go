@@ -6,7 +6,6 @@ import (
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -291,11 +290,9 @@ var DataProfileResourceSchema = schema.Schema{
 			Default:             booldefault.StaticBool(false),
 		},
 		"version": schema.Int64Attribute{
-			MarkdownDescription: "The version number of the profile.",
+			// No UseStateForUnknown: the backend increments the version on every update.
+			MarkdownDescription: "The version number of the profile. Incremented by the backend on every update.",
 			Computed:            true,
-			PlanModifiers: []planmodifier.Int64{
-				int64planmodifier.UseStateForUnknown(),
-			},
 		},
 		"detection_rules": schema.ListNestedAttribute{
 			MarkdownDescription: "List of detection rules. Must be all `expression_tree` or all `multi_profile`.",

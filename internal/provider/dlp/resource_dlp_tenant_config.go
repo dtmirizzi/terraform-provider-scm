@@ -34,7 +34,7 @@ type dlpTenantConfigResource struct {
 }
 
 func (r *dlpTenantConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_tenant_config"
+	resp.TypeName = req.ProviderTypeName + "_dlp_tenant_config"
 }
 
 func (r *dlpTenantConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -209,7 +209,7 @@ type dlpTenantConfigDataSource struct {
 }
 
 func (d *dlpTenantConfigDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = "scm_dlp_tenant_config"
+	resp.TypeName = req.ProviderTypeName + "_dlp_tenant_config"
 }
 
 func (d *dlpTenantConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -258,17 +258,9 @@ func dlpTenantConfigModelToDTO(m *models.DlpTenantConfigModel) *dlpclient.Tenant
 		v := m.MaskLevel.ValueString()
 		dto.MaskLevel = &v
 	}
-	if !m.IncidentNotificationEnablement.IsNull() && !m.IncidentNotificationEnablement.IsUnknown() {
-		v := m.IncidentNotificationEnablement.ValueBool()
-		dto.IncidentNotificationEnablement = &v
-	}
 	if !m.IncidentNotificationSnippetsEnablement.IsNull() && !m.IncidentNotificationSnippetsEnablement.IsUnknown() {
 		v := m.IncidentNotificationSnippetsEnablement.ValueBool()
 		dto.IncidentNotificationSnippetsEnablement = &v
-	}
-	if !m.DetectionExemptionPeriodMinutes.IsNull() && !m.DetectionExemptionPeriodMinutes.IsUnknown() {
-		v := m.DetectionExemptionPeriodMinutes.ValueInt64()
-		dto.DetectionExemptionPeriodMinutes = &v
 	}
 	if !m.EnableStructuredDataClustering.IsNull() && !m.EnableStructuredDataClustering.IsUnknown() {
 		v := m.EnableStructuredDataClustering.ValueBool()
@@ -290,14 +282,13 @@ func dlpTenantConfigModelToDTO(m *models.DlpTenantConfigModel) *dlpclient.Tenant
 		v := m.EdmEnablementBanner.ValueBool()
 		dto.EdmEnablementBanner = &v
 	}
-	if !m.OcrEnablement.IsNull() && !m.OcrEnablement.IsUnknown() {
-		v := m.OcrEnablement.ValueString()
-		dto.OcrEnablement = &v
-	}
 	if !m.OcrEnablementBanner.IsNull() && !m.OcrEnablementBanner.IsUnknown() {
 		v := m.OcrEnablementBanner.ValueBool()
 		dto.OcrEnablementBanner = &v
 	}
+	// incident_notification_enablement, detection_exemption_period_minutes and
+	// ocr_enablement are read-only on this resource; they are owned by
+	// scm_dlp_alert_settings and scm_dlp_ocr_enablement respectively.
 	return dto
 }
 
