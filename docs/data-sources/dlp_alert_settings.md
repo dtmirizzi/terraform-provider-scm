@@ -3,12 +3,14 @@
 page_title: "scm_dlp_alert_settings Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves Enterprise DLP alert settings.
+  [Beta / Experimental] Retrieves Enterprise DLP alert settings.
 ---
 
 # scm_dlp_alert_settings (Data Source)
 
-Retrieves Enterprise DLP alert settings.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves Enterprise DLP alert settings.
 
 ## Example Usage
 

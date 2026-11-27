@@ -3,12 +3,14 @@
 page_title: "scm_dlp_endpoint_policy Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves details of an Enterprise DLP Endpoint Policy.
+  [Beta / Experimental] Retrieves details of an Enterprise DLP Endpoint Policy.
 ---
 
 # scm_dlp_endpoint_policy (Data Source)
 
-Retrieves details of an Enterprise DLP Endpoint Policy.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves details of an Enterprise DLP Endpoint Policy.
 
 ## Example Usage
 

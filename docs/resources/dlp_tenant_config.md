@@ -3,12 +3,14 @@
 page_title: "scm_dlp_tenant_config Resource - scm"
 subcategory: ""
 description: |-
-  Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.
+  [Beta / Experimental] Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.
 ---
 
 # scm_dlp_tenant_config (Resource)
 
-Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.
 
 ## Example Usage
 

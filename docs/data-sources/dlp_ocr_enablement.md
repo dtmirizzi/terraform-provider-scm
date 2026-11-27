@@ -3,12 +3,14 @@
 page_title: "scm_dlp_ocr_enablement Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves Enterprise DLP OCR enablement state for a target service.
+  [Beta / Experimental] Retrieves Enterprise DLP OCR enablement state for a target service.
 ---
 
 # scm_dlp_ocr_enablement (Data Source)
 
-Retrieves Enterprise DLP OCR enablement state for a target service.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves Enterprise DLP OCR enablement state for a target service.
 
 ## Example Usage
 

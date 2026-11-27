@@ -35,7 +35,7 @@ type EndpointPolicyListModel struct {
 }
 
 var EndpointPolicyResourceSchema = rschema.Schema{
-	Description: "Manages an Enterprise DLP Endpoint Policy.",
+	Description: "[Beta / Experimental] Manages an Enterprise DLP Endpoint Policy.",
 	Attributes: map[string]rschema.Attribute{
 		"tfid": rschema.StringAttribute{
 			Computed:    true,
@@ -94,7 +94,7 @@ var EndpointPolicyResourceSchema = rschema.Schema{
 }
 
 var EndpointPolicyDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves details of an Enterprise DLP Endpoint Policy.",
+	Description: "[Beta / Experimental] Retrieves details of an Enterprise DLP Endpoint Policy.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Required:    true,
@@ -142,7 +142,7 @@ var EndpointPolicyDataSourceSchema = dsschema.Schema{
 }
 
 var EndpointPolicyListDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves a list of Enterprise DLP Endpoint Policies.",
+	Description: "[Beta / Experimental] Retrieves a list of Enterprise DLP Endpoint Policies.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:    true,
@@ -225,7 +225,7 @@ type PeripheralListModel struct {
 }
 
 var PeripheralResourceSchema = rschema.Schema{
-	Description: "Manages an Enterprise DLP Peripheral.",
+	Description: "[Beta / Experimental] Manages an Enterprise DLP Peripheral.",
 	Attributes: map[string]rschema.Attribute{
 		"tfid": rschema.StringAttribute{
 			Computed:    true,
@@ -278,7 +278,7 @@ var PeripheralResourceSchema = rschema.Schema{
 }
 
 var PeripheralDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves details of an Enterprise DLP Peripheral.",
+	Description: "[Beta / Experimental] Retrieves details of an Enterprise DLP Peripheral.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Required:    true,
@@ -320,7 +320,7 @@ var PeripheralDataSourceSchema = dsschema.Schema{
 }
 
 var PeripheralListDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves a list of Enterprise DLP Peripherals.",
+	Description: "[Beta / Experimental] Retrieves a list of Enterprise DLP Peripherals.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:    true,
@@ -397,7 +397,7 @@ type SyslogProfileListModel struct {
 }
 
 var SyslogProfileResourceSchema = rschema.Schema{
-	Description: "Manages an Enterprise DLP Syslog Server Profile.",
+	Description: "[Beta / Experimental] Manages an Enterprise DLP Syslog Server Profile.",
 	Attributes: map[string]rschema.Attribute{
 		"tfid": rschema.StringAttribute{
 			Computed:    true,
@@ -448,7 +448,7 @@ var SyslogProfileResourceSchema = rschema.Schema{
 }
 
 var SyslogProfileDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves details of an Enterprise DLP Syslog Server Profile.",
+	Description: "[Beta / Experimental] Retrieves details of an Enterprise DLP Syslog Server Profile.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Required:    true,
@@ -491,7 +491,7 @@ var SyslogProfileDataSourceSchema = dsschema.Schema{
 }
 
 var SyslogProfileListDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves a list of Enterprise DLP Syslog Server Profiles.",
+	Description: "[Beta / Experimental] Retrieves a list of Enterprise DLP Syslog Server Profiles.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:    true,
@@ -565,7 +565,7 @@ type ForwardProfileListModel struct {
 }
 
 var ForwardProfileResourceSchema = rschema.Schema{
-	Description: "Manages an Enterprise DLP Forward Profile.",
+	Description: "[Beta / Experimental] Manages an Enterprise DLP Forward Profile.",
 	Attributes: map[string]rschema.Attribute{
 		"tfid": rschema.StringAttribute{
 			Computed:    true,
@@ -598,7 +598,7 @@ var ForwardProfileResourceSchema = rschema.Schema{
 }
 
 var ForwardProfileDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves details of an Enterprise DLP Forward Profile.",
+	Description: "[Beta / Experimental] Retrieves details of an Enterprise DLP Forward Profile.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Required:    true,
@@ -625,7 +625,7 @@ var ForwardProfileDataSourceSchema = dsschema.Schema{
 }
 
 var ForwardProfileListDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves a list of Enterprise DLP Forward Profiles.",
+	Description: "[Beta / Experimental] Retrieves a list of Enterprise DLP Forward Profiles.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:    true,

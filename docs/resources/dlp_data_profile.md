@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_profile Resource - scm"
 subcategory: ""
 description: |-
-  DLP Data Profile resource (/v2/api/data-profiles). Manages detection rules with boolean expression trees or multi-profile compositions.
+  [Beta / Experimental] DLP Data Profile resource (/v2/api/data-profiles). Manages detection rules with boolean expression trees or multi-profile compositions.
 ---
 
 # scm_dlp_data_profile (Resource)
 
-DLP Data Profile resource (`/v2/api/data-profiles`). Manages detection rules with boolean expression trees or multi-profile compositions.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] DLP Data Profile resource (`/v2/api/data-profiles`). Manages detection rules with boolean expression trees or multi-profile compositions.
 
 ## Example Usage
 

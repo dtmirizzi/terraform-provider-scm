@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_filtering_profile Data Source - scm"
 subcategory: ""
 description: |-
-  DLP Data Filtering Profile data source (/v2/api/data-filtering-profiles/{id}).
+  [Beta / Experimental] DLP Data Filtering Profile data source (/v2/api/data-filtering-profiles/{id}).
 ---
 
 # scm_dlp_data_filtering_profile (Data Source)
 
-DLP Data Filtering Profile data source (`/v2/api/data-filtering-profiles/{id}`).
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] DLP Data Filtering Profile data source (`/v2/api/data-filtering-profiles/{id}`).
 
 ## Example Usage
 

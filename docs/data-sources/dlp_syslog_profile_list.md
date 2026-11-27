@@ -3,12 +3,14 @@
 page_title: "scm_dlp_syslog_profile_list Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves a list of Enterprise DLP Syslog Server Profiles.
+  [Beta / Experimental] Retrieves a list of Enterprise DLP Syslog Server Profiles.
 ---
 
 # scm_dlp_syslog_profile_list (Data Source)
 
-Retrieves a list of Enterprise DLP Syslog Server Profiles.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves a list of Enterprise DLP Syslog Server Profiles.
 
 ## Example Usage
 

@@ -3,12 +3,14 @@
 page_title: "scm_dlp_alert_settings Resource - scm"
 subcategory: ""
 description: |-
-  Manages Enterprise DLP alert settings.
+  [Beta / Experimental] Manages Enterprise DLP alert settings.
 ---
 
 # scm_dlp_alert_settings (Resource)
 
-Manages Enterprise DLP alert settings.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages Enterprise DLP alert settings.
 
 ## Example Usage
 

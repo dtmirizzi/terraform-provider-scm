@@ -3,12 +3,14 @@
 page_title: "scm_dlp_edm_dataset Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.
+  [Beta / Experimental] Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.
 ---
 
 # scm_dlp_edm_dataset (Data Source)
 
-Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.
 
 ## Example Usage
 

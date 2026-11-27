@@ -3,12 +3,14 @@
 page_title: "scm_dlp_document_type Resource - scm"
 subcategory: ""
 description: |-
-  Manages an Enterprise DLP Document Type.
+  [Beta / Experimental] Manages an Enterprise DLP Document Type.
 ---
 
 # scm_dlp_document_type (Resource)
 
-Manages an Enterprise DLP Document Type.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages an Enterprise DLP Document Type.
 
 ## Example Usage
 

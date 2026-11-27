@@ -3,12 +3,14 @@
 page_title: "scm_dlp_peripheral_list Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves a list of Enterprise DLP Peripherals.
+  [Beta / Experimental] Retrieves a list of Enterprise DLP Peripherals.
 ---
 
 # scm_dlp_peripheral_list (Data Source)
 
-Retrieves a list of Enterprise DLP Peripherals.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves a list of Enterprise DLP Peripherals.
 
 ## Example Usage
 

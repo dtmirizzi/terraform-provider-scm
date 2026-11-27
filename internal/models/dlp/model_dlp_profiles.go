@@ -243,7 +243,7 @@ func RuleItemDataSourceAttributes() map[string]dsschema.Attribute {
 
 // DataProfileResourceSchema defines the schema for scm_dlp_data_profile resource.
 var DataProfileResourceSchema = schema.Schema{
-	MarkdownDescription: "DLP Data Profile resource (`/v2/api/data-profiles`). Manages detection rules with boolean expression trees or multi-profile compositions.",
+	MarkdownDescription: "[Beta / Experimental] DLP Data Profile resource (`/v2/api/data-profiles`). Manages detection rules with boolean expression trees or multi-profile compositions.",
 	Attributes: map[string]schema.Attribute{
 		"id": schema.StringAttribute{
 			MarkdownDescription: "The unique identifier of the data profile.",
@@ -395,7 +395,7 @@ var DataProfileResourceSchema = schema.Schema{
 
 // DataProfileDataSourceSchema defines the schema for scm_dlp_data_profile data source.
 var DataProfileDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "DLP Data Profile data source (`/v2/api/data-profiles/{id}`).",
+	MarkdownDescription: "[Beta / Experimental] DLP Data Profile data source (`/v2/api/data-profiles/{id}`).",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			MarkdownDescription: "The unique identifier of the data profile.",
@@ -518,7 +518,7 @@ type DataProfileListDataSourceModel struct {
 
 // DataProfileListDataSourceSchema defines the schema for scm_dlp_data_profile_list data source.
 var DataProfileListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves a list of DLP Data Profiles (`GET /v2/api/data-profiles`), optionally filtered by name.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves a list of DLP Data Profiles (`GET /v2/api/data-profiles`), optionally filtered by name.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			MarkdownDescription: "The Terraform ID.",
@@ -716,7 +716,7 @@ type DataFilteringProfileResourceModel struct {
 
 // DataFilteringProfileResourceSchema defines the schema for scm_dlp_data_filtering_profile resource.
 var DataFilteringProfileResourceSchema = schema.Schema{
-	MarkdownDescription: "DLP Data Filtering Profile resource (`/v2/api/data-filtering-profiles`). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.",
+	MarkdownDescription: "[Beta / Experimental] DLP Data Filtering Profile resource (`/v2/api/data-filtering-profiles`). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.",
 	Attributes: map[string]schema.Attribute{
 		"id": schema.StringAttribute{
 			MarkdownDescription: "The unique identifier of the data filtering profile. If omitted during creation, it is auto-resolved from the data_profile_id.",
@@ -877,7 +877,7 @@ var DataFilteringProfileResourceSchema = schema.Schema{
 
 // DataFilteringProfileDataSourceSchema defines the schema for scm_dlp_data_filtering_profile data source.
 var DataFilteringProfileDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "DLP Data Filtering Profile data source (`/v2/api/data-filtering-profiles/{id}`).",
+	MarkdownDescription: "[Beta / Experimental] DLP Data Filtering Profile data source (`/v2/api/data-filtering-profiles/{id}`).",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			MarkdownDescription: "The unique identifier of the data filtering profile.",
@@ -1014,7 +1014,7 @@ type DataFilteringProfileListDataSourceModel struct {
 
 // DataFilteringProfileListDataSourceSchema defines the schema for scm_dlp_data_filtering_profile_list data source.
 var DataFilteringProfileListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves a list of DLP Data Filtering Profiles (`GET /v2/api/data-filtering-profiles`), optionally filtered by name or status.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves a list of DLP Data Filtering Profiles (`GET /v2/api/data-filtering-profiles`), optionally filtered by name or status.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			MarkdownDescription: "The Terraform ID.",

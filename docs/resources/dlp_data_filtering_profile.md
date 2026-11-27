@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_filtering_profile Resource - scm"
 subcategory: ""
 description: |-
-  DLP Data Filtering Profile resource (/v2/api/data-filtering-profiles). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.
+  [Beta / Experimental] DLP Data Filtering Profile resource (/v2/api/data-filtering-profiles). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.
 ---
 
 # scm_dlp_data_filtering_profile (Resource)
 
-DLP Data Filtering Profile resource (`/v2/api/data-filtering-profiles`). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] DLP Data Filtering Profile resource (`/v2/api/data-filtering-profiles`). Manages scan directions, file type scopes, user coaching, exclusions, and severity actions linked 1:1 to a Data Profile.
 
 ## Example Usage
 

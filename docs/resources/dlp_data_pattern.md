@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_pattern Resource - scm"
 subcategory: ""
 description: |-
-  Manages an Enterprise DLP Data Pattern.
+  [Beta / Experimental] Manages an Enterprise DLP Data Pattern.
 ---
 
 # scm_dlp_data_pattern (Resource)
 
-Manages an Enterprise DLP Data Pattern.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages an Enterprise DLP Data Pattern.
 
 ## Example Usage
 

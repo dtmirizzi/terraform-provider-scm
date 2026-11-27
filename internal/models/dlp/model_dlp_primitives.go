@@ -107,7 +107,7 @@ type DataPatternListModel struct {
 
 // DataPatternResourceSchema defines the schema for scm_dlp_data_pattern resource.
 var DataPatternResourceSchema = schema.Schema{
-	MarkdownDescription: "Manages an Enterprise DLP Data Pattern.",
+	MarkdownDescription: "[Beta / Experimental] Manages an Enterprise DLP Data Pattern.",
 	Attributes: map[string]schema.Attribute{
 		"tfid": schema.StringAttribute{
 			Computed:            true,
@@ -201,7 +201,7 @@ var DataPatternResourceSchema = schema.Schema{
 
 // DataPatternDataSourceSchema defines the schema for scm_dlp_data_pattern data source.
 var DataPatternDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves details for a specific Enterprise DLP Data Pattern.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves details for a specific Enterprise DLP Data Pattern.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			Computed:            true,
@@ -282,7 +282,7 @@ var DataPatternDataSourceSchema = dsschema.Schema{
 
 // DataPatternListDataSourceSchema defines the schema for scm_dlp_data_pattern_list data source.
 var DataPatternListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Lists Enterprise DLP Data Patterns with optional name filtering.",
+	MarkdownDescription: "[Beta / Experimental] Lists Enterprise DLP Data Patterns with optional name filtering.",
 	Attributes: map[string]dsschema.Attribute{
 		"name": dsschema.StringAttribute{
 			Optional:            true,
@@ -418,7 +418,7 @@ type DictionaryListModel struct {
 
 // DictionaryResourceSchema defines the schema for scm_dlp_dictionary resource.
 var DictionaryResourceSchema = schema.Schema{
-	MarkdownDescription: "Manages an Enterprise DLP Keyword Dictionary.",
+	MarkdownDescription: "[Beta / Experimental] Manages an Enterprise DLP Keyword Dictionary.",
 	Attributes: map[string]schema.Attribute{
 		"tfid": schema.StringAttribute{
 			Computed:            true,
@@ -493,7 +493,7 @@ var DictionaryResourceSchema = schema.Schema{
 
 // DictionaryDataSourceSchema defines the schema for scm_dlp_dictionary data source.
 var DictionaryDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves details for an Enterprise DLP Keyword Dictionary.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves details for an Enterprise DLP Keyword Dictionary.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			Computed:            true,
@@ -541,7 +541,7 @@ var DictionaryDataSourceSchema = dsschema.Schema{
 
 // DictionaryListDataSourceSchema defines the schema for scm_dlp_dictionary_list data source.
 var DictionaryListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Lists Enterprise DLP Keyword Dictionaries.",
+	MarkdownDescription: "[Beta / Experimental] Lists Enterprise DLP Keyword Dictionaries.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:            true,
@@ -638,7 +638,7 @@ type DocumentTypeListModel struct {
 
 // DocumentTypeResourceSchema defines the schema for scm_dlp_document_type resource.
 var DocumentTypeResourceSchema = schema.Schema{
-	MarkdownDescription: "Manages an Enterprise DLP Document Type.",
+	MarkdownDescription: "[Beta / Experimental] Manages an Enterprise DLP Document Type.",
 	Attributes: map[string]schema.Attribute{
 		"tfid": schema.StringAttribute{
 			Computed:            true,
@@ -693,7 +693,7 @@ var DocumentTypeResourceSchema = schema.Schema{
 
 // DocumentTypeDataSourceSchema defines the schema for scm_dlp_document_type data source.
 var DocumentTypeDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves details for an Enterprise DLP Document Type.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves details for an Enterprise DLP Document Type.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			Computed:            true,
@@ -736,7 +736,7 @@ var DocumentTypeDataSourceSchema = dsschema.Schema{
 
 // DocumentTypeListDataSourceSchema defines the schema for scm_dlp_document_type_list data source.
 var DocumentTypeListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Lists Enterprise DLP Document Types.",
+	MarkdownDescription: "[Beta / Experimental] Lists Enterprise DLP Document Types.",
 	Attributes: map[string]dsschema.Attribute{
 		"total": dsschema.Int64Attribute{
 			Computed:            true,
@@ -852,7 +852,7 @@ type EdmDatasetListModel struct {
 
 // EdmDatasetResourceSchema defines the schema for scm_dlp_edm_dataset resource.
 var EdmDatasetResourceSchema = schema.Schema{
-	MarkdownDescription: "Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: `terraform destroy` only removes it from state.",
+	MarkdownDescription: "[Beta / Experimental] Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: `terraform destroy` only removes it from state.",
 	Attributes: map[string]schema.Attribute{
 		"tfid": schema.StringAttribute{
 			Computed:            true,
@@ -941,7 +941,7 @@ var EdmDatasetResourceSchema = schema.Schema{
 
 // EdmDatasetDataSourceSchema defines the schema for scm_dlp_edm_dataset data source.
 var EdmDatasetDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.",
+	MarkdownDescription: "[Beta / Experimental] Retrieves details for an Enterprise DLP Exact Data Match (EDM) Dataset.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			Computed:            true,
@@ -1016,7 +1016,7 @@ var EdmDatasetDataSourceSchema = dsschema.Schema{
 
 // EdmDatasetListDataSourceSchema defines the schema for scm_dlp_edm_dataset_list data source.
 var EdmDatasetListDataSourceSchema = dsschema.Schema{
-	MarkdownDescription: "Lists Enterprise DLP Exact Data Match (EDM) Datasets with optional name filtering.",
+	MarkdownDescription: "[Beta / Experimental] Lists Enterprise DLP Exact Data Match (EDM) Datasets with optional name filtering.",
 	Attributes: map[string]dsschema.Attribute{
 		"name": dsschema.StringAttribute{
 			Optional:            true,

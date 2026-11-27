@@ -102,11 +102,11 @@ func (p *ScmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 				Optional:    true,
 			},
 			"dlp_host": schema.StringAttribute{
-				Description: "The hostname of the Enterprise DLP API. Default: `api.dlp.paloaltonetworks.com`. Environment variable: `SCM_DLP_HOST` or `DLP_HOST`.",
+				Description: "[Beta / Experimental] The hostname of the Enterprise DLP API. Default: `api.dlp.paloaltonetworks.com`. Environment variable: `SCM_DLP_HOST` or `DLP_HOST`.",
 				Optional:    true,
 			},
 			"dlp_service_name": schema.StringAttribute{
-				Description: "The service-name header sent to the Enterprise DLP API. Default: `prisma-access`. Environment variable: `SCM_DLP_SERVICE_NAME` or `DLP_SERVICE_NAME`.",
+				Description: "[Beta / Experimental] The service-name header sent to the Enterprise DLP API. Default: `prisma-access`. Environment variable: `SCM_DLP_SERVICE_NAME` or `DLP_SERVICE_NAME`.",
 				Optional:    true,
 			},
 			"x_panw_region": schema.StringAttribute{

@@ -3,12 +3,14 @@
 page_title: "scm_dlp_dictionary Resource - scm"
 subcategory: ""
 description: |-
-  Manages an Enterprise DLP Keyword Dictionary.
+  [Beta / Experimental] Manages an Enterprise DLP Keyword Dictionary.
 ---
 
 # scm_dlp_dictionary (Resource)
 
-Manages an Enterprise DLP Keyword Dictionary.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages an Enterprise DLP Keyword Dictionary.
 
 ## Example Usage
 

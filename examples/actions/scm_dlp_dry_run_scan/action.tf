@@ -1,26 +1,25 @@
-# Scan a local file against a candidate data profile without enforcing it.
+# [Beta / Experimental] Invoke a positive and negative dry-run test suite against a data profile.
 #
 # Usage:
 #   terraform apply -invoke=action.scm_dlp_dry_run_scan.check
 
 action "scm_dlp_dry_run_scan" "check" {
   config {
-    file_path = "${path.module}/sample.txt"
-    data_profile = jsonencode({
-      name = "dry-run"
-      detection_rules = [{
-        rule_type = "expression_tree"
-        expression_tree = {
-          operator_type = "or"
-          sub_expressions = [{
-            rule_item = {
-              id                       = "REPLACE_WITH_DATA_PATTERN_ID"
-              detection_technique      = "weighted_regex"
-              occurrence_operator_type = "any"
-            }
-          }]
-        }
-      }]
-    })
+    data_profile_id  = scm_dlp_data_profile.employee_pii.id
+    fail_on_mismatch = true
+
+    test_cases = [
+      {
+        name             = "positive-sample-file"
+        file_path        = "${path.module}/testdata/positive/sample_sensitive.txt"
+        expected_verdict = "MATCHED"
+        expected_action  = "block"
+      },
+      {
+        name             = "negative-benign-file"
+        file_path        = "${path.module}/testdata/negative/sample_benign.txt"
+        expected_verdict = "NOT_MATCHED"
+      }
+    ]
   }
 }

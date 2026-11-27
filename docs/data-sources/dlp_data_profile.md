@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_profile Data Source - scm"
 subcategory: ""
 description: |-
-  DLP Data Profile data source (/v2/api/data-profiles/{id}).
+  [Beta / Experimental] DLP Data Profile data source (/v2/api/data-profiles/{id}).
 ---
 
 # scm_dlp_data_profile (Data Source)
 
-DLP Data Profile data source (`/v2/api/data-profiles/{id}`).
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] DLP Data Profile data source (`/v2/api/data-profiles/{id}`).
 
 ## Example Usage
 

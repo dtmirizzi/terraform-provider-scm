@@ -512,3 +512,60 @@ resource "scm_dlp_forward_profile" "f" {
 		importStep("scm_dlp_forward_profile.f"),
 	)
 }
+
+func TestTerraformDryRunScanPositiveAndNegativeSuite(t *testing.T) {
+	env := newDlpTestEnv(t)
+	env.run(t,
+		rt.TestStep{
+			Config: `
+resource "scm_dlp_data_profile" "prof" {
+  name = "emp-id-profile"
+  detection_rules = [{
+    rule_type = "expression_tree"
+    expression_tree = {
+      operator_type = "or"
+      sub_expressions = [{
+        rule_item = {
+          id                       = "pat-123"
+          detection_technique      = "weighted_regex"
+          occurrence_operator_type = "any"
+        }
+      }]
+    }
+  }]
+}
+
+data "scm_dlp_dry_run_scan" "suite" {
+  data_profile_id  = scm_dlp_data_profile.prof.id
+  fail_on_mismatch = true
+
+  test_cases = [
+    {
+      name             = "positive-employee-id-leak"
+      file_content     = "Confidential record for employee EMP-123456."
+      file_name        = "positive_leak.txt"
+      expected_verdict = "MATCHED"
+      expected_action  = "block"
+    },
+    {
+      name             = "negative-benign-document"
+      file_content     = "Public marketing announcement with no sensitive identifiers."
+      file_name        = "negative_public.txt"
+      expected_verdict = "NOT_MATCHED"
+      expected_action  = "allow"
+    }
+  ]
+}`,
+			Check: rt.ComposeAggregateTestCheckFunc(
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "passed", "true"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.#", "2"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.0.name", "positive-employee-id-leak"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.0.verdict", "MATCHED"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.0.passed", "true"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.1.name", "negative-benign-document"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.1.verdict", "NOT_MATCHED"),
+				rt.TestCheckResourceAttr("data.scm_dlp_dry_run_scan.suite", "results.1.passed", "true"),
+			),
+		},
+	)
+}

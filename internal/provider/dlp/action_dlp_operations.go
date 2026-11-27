@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -107,74 +108,6 @@ func readValidatedUploadFile(rawPath string) ([]byte, string, error) {
 	return b, filepath.Base(resolved), nil
 }
 
-// ===========================================================================
-// Action: scm_dlp_dry_run_scan
-// POST /v2/api/dry-run/scan
-// Uses DoMultipart with fileSha, dataProfile JSON, and file content
-// ===========================================================================
-
-type DryRunScanAction struct {
-	client *dlpclient.Client
-}
-
-type DryRunScanActionModel struct {
-	DataProfile         types.String `tfsdk:"data_profile"`
-	FilePath            types.String `tfsdk:"file_path"`
-	FileContent         types.String `tfsdk:"file_content"`
-	FileName            types.String `tfsdk:"file_name"`
-	FileSha             types.String `tfsdk:"file_sha"`
-	SourceDataProfileId types.String `tfsdk:"source_data_profile_id"`
-	DryRunServiceName   types.String `tfsdk:"dry_run_service_name"`
-}
-
-func NewDryRunScanAction() action.Action {
-	return &DryRunScanAction{}
-}
-
-func (a *DryRunScanAction) Metadata(_ context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_dlp_dry_run_scan"
-}
-
-func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, resp *action.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Runs an Enterprise DLP dry-run scan against a data profile using multipart form-data.",
-		Attributes: map[string]schema.Attribute{
-			"data_profile": schema.StringAttribute{
-				Description: "JSON string representing the data profile configuration to test.",
-				Required:    true,
-			},
-			"file_path": schema.StringAttribute{
-				Description: "Path to the file to upload and scan. Either file_path or file_content must be provided.",
-				Optional:    true,
-			},
-			"file_content": schema.StringAttribute{
-				Description: "Raw content of the file to scan. Either file_path or file_content must be provided.",
-				Optional:    true,
-			},
-			"file_name": schema.StringAttribute{
-				Description: "Name of the file being scanned (defaults to 'sample.txt' if file_content is used).",
-				Optional:    true,
-			},
-			"file_sha": schema.StringAttribute{
-				Description: "SHA256 hex string of the file (computed automatically if omitted).",
-				Optional:    true,
-			},
-			"source_data_profile_id": schema.StringAttribute{
-				Description: "Optional source data profile ID.",
-				Optional:    true,
-			},
-			"dry_run_service_name": schema.StringAttribute{
-				Description: "Optional dry-run service name (defaults to prisma-access).",
-				Optional:    true,
-			},
-		},
-	}
-}
-
-func (a *DryRunScanAction) Configure(_ context.Context, req action.ConfigureRequest, resp *action.ConfigureResponse) {
-	a.client = extractDLPClient(req.ProviderData, &resp.Diagnostics)
-}
-
 // normalizeDryRunDataProfileJSON ensures the dataProfile JSON has the internal DataProfileDTO
 // fields required by POST /v2/api/dry-run/scan (dss-management POST /v1/{tenant}/data-profiles).
 func normalizeDryRunDataProfileJSON(raw string) (string, error) {
@@ -209,59 +142,139 @@ func normalizeDryRunDataProfileJSON(raw string) (string, error) {
 	return string(out), nil
 }
 
-func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest, resp *action.InvokeResponse) {
-	var data DryRunScanActionModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
+// resolveDryRunDataProfileJSON resolves the data profile JSON either from `data_profile` (raw JSON)
+// or by fetching `data_profile_id` via GET /v2/api/data-profiles/{id}.
+func resolveDryRunDataProfileJSON(ctx context.Context, client *dlpclient.Client, dataProfile, dataProfileId types.String) (string, string, error) {
+	if !dataProfile.IsNull() && !dataProfile.IsUnknown() && strings.TrimSpace(dataProfile.ValueString()) != "" {
+		norm, err := normalizeDryRunDataProfileJSON(dataProfile.ValueString())
+		if err != nil {
+			return "", "", fmt.Errorf("the 'data_profile' argument must be valid JSON: %w", err)
+		}
+		sourceID := ""
+		if !dataProfileId.IsNull() && !dataProfileId.IsUnknown() {
+			sourceID = strings.TrimSpace(dataProfileId.ValueString())
+		}
+		return norm, sourceID, nil
 	}
+	if !dataProfileId.IsNull() && !dataProfileId.IsUnknown() && strings.TrimSpace(dataProfileId.ValueString()) != "" {
+		id := strings.TrimSpace(dataProfileId.ValueString())
+		var rawDTO map[string]any
+		if err := client.Get(ctx, fmt.Sprintf("/v2/api/data-profiles/%s", dlpclient.EscapeID(id)), nil, &rawDTO); err != nil {
+			return "", "", fmt.Errorf("failed to fetch data profile %q: %w", id, err)
+		}
+		rawBytes, err := json.Marshal(rawDTO)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to serialize data profile %q: %w", id, err)
+		}
+		norm, err := normalizeDryRunDataProfileJSON(string(rawBytes))
+		if err != nil {
+			return "", "", err
+		}
+		return norm, id, nil
+	}
+	return "", "", fmt.Errorf("either 'data_profile' (JSON string) or 'data_profile_id' (existing profile ID) must be provided")
+}
 
-	tflog.Info(ctx, "Invoking action scm_dlp_dry_run_scan")
-	if resp != nil && resp.SendProgress != nil {
-		resp.SendProgress(action.InvokeProgressEvent{
-			Message: "Invoking action scm_dlp_dry_run_scan...",
-		})
+// DryRunTestCaseModel represents a single positive or negative dry-run test case.
+type DryRunTestCaseModel struct {
+	Name            types.String `tfsdk:"name"`
+	FilePath        types.String `tfsdk:"file_path"`
+	FileContent     types.String `tfsdk:"file_content"`
+	FileName        types.String `tfsdk:"file_name"`
+	FileSha         types.String `tfsdk:"file_sha"`
+	ExpectedVerdict types.String `tfsdk:"expected_verdict"`
+	ExpectedAction  types.String `tfsdk:"expected_action"`
+}
+
+// DryRunTestCaseResultModel represents the computed result of a single dry-run test case.
+type DryRunTestCaseResultModel struct {
+	Name            types.String `tfsdk:"name"`
+	FileName        types.String `tfsdk:"file_name"`
+	FileSha         types.String `tfsdk:"file_sha"`
+	Status          types.String `tfsdk:"status"`
+	Verdict         types.String `tfsdk:"verdict"`
+	Action          types.String `tfsdk:"action"`
+	ExpectedVerdict types.String `tfsdk:"expected_verdict"`
+	ExpectedAction  types.String `tfsdk:"expected_action"`
+	Passed          types.Bool   `tfsdk:"passed"`
+	FailureReason   types.String `tfsdk:"failure_reason"`
+	ResultJson      types.String `tfsdk:"result_json"`
+}
+
+func extractDryRunFields(scanResult map[string]any) (status, verdict, actionStr string) {
+	if st, ok := scanResult["status"].(string); ok {
+		status = st
 	}
+	if vd, ok := scanResult["verdict"].(string); ok {
+		verdict = vd
+	}
+	if act, ok := scanResult["action"].(string); ok {
+		actionStr = act
+	}
+	if rpt, ok := scanResult["report"].(map[string]any); ok {
+		if verdict == "" {
+			if vd, ok := rpt["data_pattern_rule_1_verdict"].(string); ok && vd != "" {
+				verdict = vd
+			} else if vd2, ok := rpt["data_pattern_rule_2_verdict"].(string); ok && vd2 != "" {
+				verdict = vd2
+			}
+		}
+		if actionStr == "" {
+			if act, ok := rpt["action"].(string); ok {
+				actionStr = act
+			}
+		}
+	}
+	return status, verdict, actionStr
+}
+
+func executeSingleDryRunCase(
+	ctx context.Context,
+	client *dlpclient.Client,
+	tc DryRunTestCaseModel,
+	dataProfileStr string,
+	sourceDataProfileID string,
+	dryRunServiceName string,
+) (DryRunTestCaseResultModel, error) {
+	var out DryRunTestCaseResultModel
+	caseName := "default"
+	if !tc.Name.IsNull() && !tc.Name.IsUnknown() && strings.TrimSpace(tc.Name.ValueString()) != "" {
+		caseName = strings.TrimSpace(tc.Name.ValueString())
+	}
+	out.Name = types.StringValue(caseName)
 
 	var fileBytes []byte
 	fileName := "sample.txt"
 
-	if !data.FilePath.IsNull() && data.FilePath.ValueString() != "" {
-		b, baseName, err := readValidatedUploadFile(data.FilePath.ValueString())
+	if !tc.FilePath.IsNull() && !tc.FilePath.IsUnknown() && tc.FilePath.ValueString() != "" {
+		b, baseName, err := readValidatedUploadFile(tc.FilePath.ValueString())
 		if err != nil {
-			resp.Diagnostics.AddError("File Validation Error", err.Error())
-			return
+			return out, fmt.Errorf("test case %q: %w", caseName, err)
 		}
 		fileBytes = b
 		fileName = baseName
-	} else if !data.FileContent.IsNull() {
-		fileBytes = []byte(data.FileContent.ValueString())
+	} else if !tc.FileContent.IsNull() && !tc.FileContent.IsUnknown() {
+		fileBytes = []byte(tc.FileContent.ValueString())
 		if len(fileBytes) == 0 || len(fileBytes) > MaxUploadFileSize {
-			resp.Diagnostics.AddError("File Validation Error", "file_content must be non-empty and at most 20MB.")
-			return
+			return out, fmt.Errorf("test case %q: file_content must be non-empty and at most 20MB", caseName)
 		}
 	} else {
-		resp.Diagnostics.AddError("Missing Input", "Either 'file_path' or 'file_content' must be provided.")
-		return
+		return out, fmt.Errorf("test case %q: either 'file_path' or 'file_content' must be provided", caseName)
 	}
 
-	if !data.FileName.IsNull() && data.FileName.ValueString() != "" {
-		fileName = filepath.Base(data.FileName.ValueString())
+	if !tc.FileName.IsNull() && !tc.FileName.IsUnknown() && tc.FileName.ValueString() != "" {
+		fileName = filepath.Base(tc.FileName.ValueString())
 	}
+	out.FileName = types.StringValue(fileName)
 
 	fileSha := ""
-	if !data.FileSha.IsNull() && data.FileSha.ValueString() != "" {
-		fileSha = data.FileSha.ValueString()
+	if !tc.FileSha.IsNull() && !tc.FileSha.IsUnknown() && tc.FileSha.ValueString() != "" {
+		fileSha = tc.FileSha.ValueString()
 	} else {
 		hash := sha256.Sum256(fileBytes)
 		fileSha = hex.EncodeToString(hash[:])
 	}
-
-	dataProfileStr, err := normalizeDryRunDataProfileJSON(data.DataProfile.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Data Profile JSON", "The 'data_profile' argument must be valid JSON.")
-		return
-	}
+	out.FileSha = types.StringValue(fileSha)
 
 	parts := []dlpclient.MultipartPart{
 		{
@@ -279,31 +292,276 @@ func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest,
 			Data:        fileBytes,
 		},
 	}
-	if !data.SourceDataProfileId.IsNull() && data.SourceDataProfileId.ValueString() != "" {
+	if sourceDataProfileID != "" {
 		parts = append(parts, dlpclient.MultipartPart{
 			FieldName: "sourceDataProfileId",
-			Data:      []byte(data.SourceDataProfileId.ValueString()),
+			Data:      []byte(sourceDataProfileID),
 		})
 	}
-	if !data.DryRunServiceName.IsNull() && data.DryRunServiceName.ValueString() != "" {
+	if dryRunServiceName != "" {
 		parts = append(parts, dlpclient.MultipartPart{
 			FieldName: "dryRunServiceName",
-			Data:      []byte(data.DryRunServiceName.ValueString()),
+			Data:      []byte(dryRunServiceName),
 		})
 	}
 
 	var scanResult map[string]any
-	if err := a.client.DoMultipart(ctx, "POST", "/v2/api/dry-run/scan", nil, parts, &scanResult); err != nil {
-		resp.Diagnostics.AddError("Dry-Run Scan Failed", err.Error())
+	if err := client.DoMultipart(ctx, "POST", "/v2/api/dry-run/scan", nil, parts, &scanResult); err != nil {
+		return out, fmt.Errorf("test case %q dry-run scan failed: %w", caseName, err)
+	}
+
+	rawJSON, _ := json.Marshal(scanResult)
+	out.ResultJson = types.StringValue(string(rawJSON))
+
+	status, verdict, actionStr := extractDryRunFields(scanResult)
+	if status != "" {
+		out.Status = types.StringValue(status)
+	} else {
+		out.Status = types.StringNull()
+	}
+	if verdict != "" {
+		out.Verdict = types.StringValue(verdict)
+	} else {
+		out.Verdict = types.StringNull()
+	}
+	if actionStr != "" {
+		out.Action = types.StringValue(actionStr)
+	} else {
+		out.Action = types.StringNull()
+	}
+
+	passed := true
+	var reasons []string
+
+	if !tc.ExpectedVerdict.IsNull() && !tc.ExpectedVerdict.IsUnknown() && strings.TrimSpace(tc.ExpectedVerdict.ValueString()) != "" {
+		expV := strings.TrimSpace(tc.ExpectedVerdict.ValueString())
+		out.ExpectedVerdict = types.StringValue(expV)
+		if !strings.EqualFold(verdict, expV) {
+			passed = false
+			reasons = append(reasons, fmt.Sprintf("expected verdict %q but got %q", expV, verdict))
+		}
+	} else {
+		out.ExpectedVerdict = types.StringNull()
+	}
+
+	if !tc.ExpectedAction.IsNull() && !tc.ExpectedAction.IsUnknown() && strings.TrimSpace(tc.ExpectedAction.ValueString()) != "" {
+		expA := strings.TrimSpace(tc.ExpectedAction.ValueString())
+		out.ExpectedAction = types.StringValue(expA)
+		if !strings.EqualFold(actionStr, expA) {
+			passed = false
+			reasons = append(reasons, fmt.Sprintf("expected action %q but got %q", expA, actionStr))
+		}
+	} else {
+		out.ExpectedAction = types.StringNull()
+	}
+
+	out.Passed = types.BoolValue(passed)
+	if len(reasons) > 0 {
+		out.FailureReason = types.StringValue(strings.Join(reasons, "; "))
+	} else {
+		out.FailureReason = types.StringNull()
+	}
+
+	return out, nil
+}
+
+// ===========================================================================
+// Action: scm_dlp_dry_run_scan
+// POST /v2/api/dry-run/scan
+// Supports single-file or multi-file (test_cases) positive & negative testing
+// ===========================================================================
+
+type DryRunScanAction struct {
+	client *dlpclient.Client
+}
+
+type DryRunScanActionModel struct {
+	DataProfile         types.String          `tfsdk:"data_profile"`
+	DataProfileId       types.String          `tfsdk:"data_profile_id"`
+	FilePath            types.String          `tfsdk:"file_path"`
+	FileContent         types.String          `tfsdk:"file_content"`
+	FileName            types.String          `tfsdk:"file_name"`
+	FileSha             types.String          `tfsdk:"file_sha"`
+	ExpectedVerdict     types.String          `tfsdk:"expected_verdict"`
+	ExpectedAction      types.String          `tfsdk:"expected_action"`
+	FailOnMismatch      types.Bool            `tfsdk:"fail_on_mismatch"`
+	TestCases           []DryRunTestCaseModel `tfsdk:"test_cases"`
+	SourceDataProfileId types.String          `tfsdk:"source_data_profile_id"`
+	DryRunServiceName   types.String          `tfsdk:"dry_run_service_name"`
+}
+
+func NewDryRunScanAction() action.Action {
+	return &DryRunScanAction{}
+}
+
+func (a *DryRunScanAction) Metadata(_ context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dlp_dry_run_scan"
+}
+
+func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, resp *action.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "[Beta / Experimental] Runs one or more Enterprise DLP dry-run scans (positive and negative test cases) against a data profile using multipart form-data.",
+		Attributes: map[string]schema.Attribute{
+			"data_profile": schema.StringAttribute{
+				Description: "JSON string representing the data profile configuration to test. Either data_profile or data_profile_id must be provided.",
+				Optional:    true,
+			},
+			"data_profile_id": schema.StringAttribute{
+				Description: "ID of an existing Enterprise DLP data profile (e.g. scm_dlp_data_profile.<name>.id) to fetch and test. Either data_profile or data_profile_id must be provided.",
+				Optional:    true,
+			},
+			"file_path": schema.StringAttribute{
+				Description: "Path to a single file to upload and scan. Used when test_cases is not specified.",
+				Optional:    true,
+			},
+			"file_content": schema.StringAttribute{
+				Description: "Raw content of a single file to scan. Used when test_cases is not specified.",
+				Optional:    true,
+			},
+			"file_name": schema.StringAttribute{
+				Description: "Name of the file being scanned (defaults to 'sample.txt' if file_content is used).",
+				Optional:    true,
+			},
+			"file_sha": schema.StringAttribute{
+				Description: "SHA256 hex string of the file (computed automatically if omitted).",
+				Optional:    true,
+			},
+			"expected_verdict": schema.StringAttribute{
+				Description: "Optional expected verdict for single-file scan (e.g. 'MATCHED' for positive tests or 'NOT_MATCHED' for negative tests).",
+				Optional:    true,
+			},
+			"expected_action": schema.StringAttribute{
+				Description: "Optional expected action for single-file scan (e.g. 'block', 'alert', 'allow').",
+				Optional:    true,
+			},
+			"fail_on_mismatch": schema.BoolAttribute{
+				Description: "Whether to fail the Terraform operation with an error diagnostic if any expected_verdict or expected_action does not match the scan result (defaults to true).",
+				Optional:    true,
+			},
+			"test_cases": schema.ListNestedAttribute{
+				Description: "Optional list of positive and negative test cases (files or inline content) to scan against the data profile.",
+				Optional:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							Description: "Descriptive name for this test case (e.g. 'positive-pci-csv' or 'negative-benign-readme').",
+							Optional:    true,
+						},
+						"file_path": schema.StringAttribute{
+							Description: "Path to the local file to upload and scan for this test case.",
+							Optional:    true,
+						},
+						"file_content": schema.StringAttribute{
+							Description: "Inline content to scan for this test case.",
+							Optional:    true,
+						},
+						"file_name": schema.StringAttribute{
+							Description: "File name sent in the multipart upload (defaults to basename of file_path or 'sample.txt').",
+							Optional:    true,
+						},
+						"file_sha": schema.StringAttribute{
+							Description: "Optional SHA256 hex digest of the file.",
+							Optional:    true,
+						},
+						"expected_verdict": schema.StringAttribute{
+							Description: "Expected scan verdict: 'MATCHED' for positive test cases or 'NOT_MATCHED' for negative test cases.",
+							Optional:    true,
+						},
+						"expected_action": schema.StringAttribute{
+							Description: "Optional expected scan action (e.g. 'block', 'alert').",
+							Optional:    true,
+						},
+					},
+				},
+			},
+			"source_data_profile_id": schema.StringAttribute{
+				Description: "Optional source data profile ID.",
+				Optional:    true,
+			},
+			"dry_run_service_name": schema.StringAttribute{
+				Description: "Optional dry-run service name (defaults to prisma-access).",
+				Optional:    true,
+			},
+		},
+	}
+}
+
+func (a *DryRunScanAction) Configure(_ context.Context, req action.ConfigureRequest, resp *action.ConfigureResponse) {
+	a.client = extractDLPClient(req.ProviderData, &resp.Diagnostics)
+}
+
+func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest, resp *action.InvokeResponse) {
+	var data DryRunScanActionModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	rawJSON, err := json.MarshalIndent(scanResult, "", "  ")
-	if err != nil {
-		rawJSON = []byte(fmt.Sprintf("%+v", scanResult))
+	tflog.Info(ctx, "Invoking action scm_dlp_dry_run_scan")
+	if resp != nil && resp.SendProgress != nil {
+		resp.SendProgress(action.InvokeProgressEvent{
+			Message: "Invoking action scm_dlp_dry_run_scan...",
+		})
 	}
 
-	completionMsg := fmt.Sprintf("Dry-run scan completed successfully:\n%s", string(rawJSON))
+	dataProfileStr, resolvedSourceID, err := resolveDryRunDataProfileJSON(ctx, a.client, data.DataProfile, data.DataProfileId)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Data Profile Input", err.Error())
+		return
+	}
+
+	sourceID := resolvedSourceID
+	if !data.SourceDataProfileId.IsNull() && !data.SourceDataProfileId.IsUnknown() && data.SourceDataProfileId.ValueString() != "" {
+		sourceID = data.SourceDataProfileId.ValueString()
+	}
+	dryRunSvc := ""
+	if !data.DryRunServiceName.IsNull() && !data.DryRunServiceName.IsUnknown() {
+		dryRunSvc = data.DryRunServiceName.ValueString()
+	}
+
+	cases := data.TestCases
+	if len(cases) == 0 {
+		cases = []DryRunTestCaseModel{
+			{
+				Name:            types.StringValue("default"),
+				FilePath:        data.FilePath,
+				FileContent:     data.FileContent,
+				FileName:        data.FileName,
+				FileSha:         data.FileSha,
+				ExpectedVerdict: data.ExpectedVerdict,
+				ExpectedAction:  data.ExpectedAction,
+			},
+		}
+	}
+
+	failOnMismatch := true
+	if !data.FailOnMismatch.IsNull() && !data.FailOnMismatch.IsUnknown() {
+		failOnMismatch = data.FailOnMismatch.ValueBool()
+	}
+
+	var results []DryRunTestCaseResultModel
+	var failures []string
+	for _, tc := range cases {
+		res, err := executeSingleDryRunCase(ctx, a.client, tc, dataProfileStr, sourceID, dryRunSvc)
+		if err != nil {
+			resp.Diagnostics.AddError("Dry-Run Scan Failed", err.Error())
+			return
+		}
+		results = append(results, res)
+		if !res.Passed.ValueBool() {
+			failures = append(failures, fmt.Sprintf("%s (%s): %s", res.Name.ValueString(), res.FileName.ValueString(), res.FailureReason.ValueString()))
+		}
+	}
+
+	if len(failures) > 0 && failOnMismatch {
+		resp.Diagnostics.AddError(
+			"Dry-Run Assertion Failed",
+			fmt.Sprintf("%d of %d dry-run test case(s) failed expectation:\n- %s", len(failures), len(results), strings.Join(failures, "\n- ")),
+		)
+		return
+	}
+
+	completionMsg := fmt.Sprintf("Dry-run scan completed (%d test case(s), %d failure(s))", len(results), len(failures))
 	tflog.Debug(ctx, completionMsg)
 	if resp != nil && resp.SendProgress != nil {
 		resp.SendProgress(action.InvokeProgressEvent{
@@ -314,7 +572,7 @@ func (a *DryRunScanAction) Invoke(ctx context.Context, req action.InvokeRequest,
 
 // ===========================================================================
 // Data Source: scm_dlp_dry_run_scan
-// POST /v2/api/dry-run/scan — Runs a dry-run scan during plan/apply and exposes result_json
+// POST /v2/api/dry-run/scan — Runs positive & negative dry-run test cases during plan/apply
 // ===========================================================================
 
 type DryRunScanDataSource struct {
@@ -322,17 +580,25 @@ type DryRunScanDataSource struct {
 }
 
 type DryRunScanDataSourceModel struct {
-	DataProfile         types.String `tfsdk:"data_profile"`
-	FilePath            types.String `tfsdk:"file_path"`
-	FileContent         types.String `tfsdk:"file_content"`
-	FileName            types.String `tfsdk:"file_name"`
-	FileSha             types.String `tfsdk:"file_sha"`
-	SourceDataProfileId types.String `tfsdk:"source_data_profile_id"`
-	DryRunServiceName   types.String `tfsdk:"dry_run_service_name"`
-	Tfid                types.String `tfsdk:"tfid"`
-	Status              types.String `tfsdk:"status"`
-	Verdict             types.String `tfsdk:"verdict"`
-	ResultJson          types.String `tfsdk:"result_json"`
+	DataProfile         types.String                `tfsdk:"data_profile"`
+	DataProfileId       types.String                `tfsdk:"data_profile_id"`
+	FilePath            types.String                `tfsdk:"file_path"`
+	FileContent         types.String                `tfsdk:"file_content"`
+	FileName            types.String                `tfsdk:"file_name"`
+	FileSha             types.String                `tfsdk:"file_sha"`
+	ExpectedVerdict     types.String                `tfsdk:"expected_verdict"`
+	ExpectedAction      types.String                `tfsdk:"expected_action"`
+	FailOnMismatch      types.Bool                  `tfsdk:"fail_on_mismatch"`
+	TestCases           []DryRunTestCaseModel       `tfsdk:"test_cases"`
+	SourceDataProfileId types.String                `tfsdk:"source_data_profile_id"`
+	DryRunServiceName   types.String                `tfsdk:"dry_run_service_name"`
+	Tfid                types.String                `tfsdk:"tfid"`
+	Status              types.String                `tfsdk:"status"`
+	Verdict             types.String                `tfsdk:"verdict"`
+	Action              types.String                `tfsdk:"action"`
+	Passed              types.Bool                  `tfsdk:"passed"`
+	ResultJson          types.String                `tfsdk:"result_json"`
+	Results             []DryRunTestCaseResultModel `tfsdk:"results"`
 }
 
 func NewDryRunScanDataSource() datasource.DataSource {
@@ -345,18 +611,22 @@ func (d *DryRunScanDataSource) Metadata(_ context.Context, req datasource.Metada
 
 func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = dsschema.Schema{
-		Description: "Executes an Enterprise DLP dry-run scan against a data profile and returns the scan result.",
+		Description: "[Beta / Experimental] Executes one or more Enterprise DLP dry-run scans (positive and negative test cases) against a data profile and returns the scan results.",
 		Attributes: map[string]dsschema.Attribute{
 			"data_profile": dsschema.StringAttribute{
-				Description: "JSON string representing the data profile configuration to test.",
-				Required:    true,
+				Description: "JSON string representing the data profile configuration to test. Either data_profile or data_profile_id must be provided.",
+				Optional:    true,
+			},
+			"data_profile_id": dsschema.StringAttribute{
+				Description: "ID of an existing Enterprise DLP data profile (e.g. scm_dlp_data_profile.<name>.id) to fetch and test. Either data_profile or data_profile_id must be provided.",
+				Optional:    true,
 			},
 			"file_path": dsschema.StringAttribute{
-				Description: "Path to the file to upload and scan. Either file_path or file_content must be provided.",
+				Description: "Path to a single file to upload and scan. Used when test_cases is not specified.",
 				Optional:    true,
 			},
 			"file_content": dsschema.StringAttribute{
-				Description: "Raw content of the file to scan. Either file_path or file_content must be provided.",
+				Description: "Raw content of a single file to scan. Used when test_cases is not specified.",
 				Optional:    true,
 			},
 			"file_name": dsschema.StringAttribute{
@@ -367,6 +637,54 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Description: "SHA256 hex string of the file (computed automatically if omitted).",
 				Optional:    true,
 				Computed:    true,
+			},
+			"expected_verdict": dsschema.StringAttribute{
+				Description: "Optional expected verdict for single-file scan ('MATCHED' for positive test cases or 'NOT_MATCHED' for negative test cases).",
+				Optional:    true,
+			},
+			"expected_action": dsschema.StringAttribute{
+				Description: "Optional expected action for single-file scan (e.g. 'block', 'alert', 'allow').",
+				Optional:    true,
+			},
+			"fail_on_mismatch": dsschema.BoolAttribute{
+				Description: "Whether to fail the Terraform plan/apply if any expected_verdict or expected_action does not match the scan result (defaults to true).",
+				Optional:    true,
+			},
+			"test_cases": dsschema.ListNestedAttribute{
+				Description: "Optional list of positive and negative test cases (files or inline content) to scan against the data profile.",
+				Optional:    true,
+				NestedObject: dsschema.NestedAttributeObject{
+					Attributes: map[string]dsschema.Attribute{
+						"name": dsschema.StringAttribute{
+							Description: "Descriptive name for this test case (e.g. 'positive-pci-csv' or 'negative-benign-readme').",
+							Optional:    true,
+						},
+						"file_path": dsschema.StringAttribute{
+							Description: "Path to the local file to upload and scan for this test case.",
+							Optional:    true,
+						},
+						"file_content": dsschema.StringAttribute{
+							Description: "Inline content to scan for this test case.",
+							Optional:    true,
+						},
+						"file_name": dsschema.StringAttribute{
+							Description: "File name sent in the multipart upload (defaults to basename of file_path or 'sample.txt').",
+							Optional:    true,
+						},
+						"file_sha": dsschema.StringAttribute{
+							Description: "Optional SHA256 hex digest of the file.",
+							Optional:    true,
+						},
+						"expected_verdict": dsschema.StringAttribute{
+							Description: "Expected scan verdict: 'MATCHED' for positive test cases or 'NOT_MATCHED' for negative test cases.",
+							Optional:    true,
+						},
+						"expected_action": dsschema.StringAttribute{
+							Description: "Optional expected scan action (e.g. 'block', 'alert').",
+							Optional:    true,
+						},
+					},
+				},
 			},
 			"source_data_profile_id": dsschema.StringAttribute{
 				Description: "Optional source data profile ID.",
@@ -381,16 +699,76 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:    true,
 			},
 			"status": dsschema.StringAttribute{
-				Description: "Dry-run scan status returned by the API.",
+				Description: "Dry-run scan status returned by the API (for single-file scan or first test case).",
 				Computed:    true,
 			},
 			"verdict": dsschema.StringAttribute{
-				Description: "Dry-run scan verdict returned by the API.",
+				Description: "Dry-run scan verdict returned by the API (for single-file scan or first test case).",
+				Computed:    true,
+			},
+			"action": dsschema.StringAttribute{
+				Description: "Dry-run scan action returned by the API (for single-file scan or first test case).",
+				Computed:    true,
+			},
+			"passed": dsschema.BoolAttribute{
+				Description: "True if all executed dry-run test cases matched their expected_verdict and expected_action.",
 				Computed:    true,
 			},
 			"result_json": dsschema.StringAttribute{
-				Description: "Full JSON response from POST /v2/api/dry-run/scan.",
+				Description: "Full JSON response from POST /v2/api/dry-run/scan (for single-file scan or first test case).",
 				Computed:    true,
+			},
+			"results": dsschema.ListNestedAttribute{
+				Description: "Per-file dry-run scan results for all executed test cases.",
+				Computed:    true,
+				NestedObject: dsschema.NestedAttributeObject{
+					Attributes: map[string]dsschema.Attribute{
+						"name": dsschema.StringAttribute{
+							Description: "Test case name.",
+							Computed:    true,
+						},
+						"file_name": dsschema.StringAttribute{
+							Description: "Scanned file name.",
+							Computed:    true,
+						},
+						"file_sha": dsschema.StringAttribute{
+							Description: "SHA256 hex digest of the scanned file.",
+							Computed:    true,
+						},
+						"status": dsschema.StringAttribute{
+							Description: "Dry-run scan status.",
+							Computed:    true,
+						},
+						"verdict": dsschema.StringAttribute{
+							Description: "Actual scan verdict ('MATCHED' or 'NOT_MATCHED').",
+							Computed:    true,
+						},
+						"action": dsschema.StringAttribute{
+							Description: "Actual policy action (e.g. 'block', 'alert').",
+							Computed:    true,
+						},
+						"expected_verdict": dsschema.StringAttribute{
+							Description: "Expected scan verdict if configured.",
+							Computed:    true,
+						},
+						"expected_action": dsschema.StringAttribute{
+							Description: "Expected scan action if configured.",
+							Computed:    true,
+						},
+						"passed": dsschema.BoolAttribute{
+							Description: "Whether this test case met its expected_verdict and expected_action.",
+							Computed:    true,
+						},
+						"failure_reason": dsschema.StringAttribute{
+							Description: "Mismatch explanation when passed is false.",
+							Computed:    true,
+						},
+						"result_json": dsschema.StringAttribute{
+							Description: "Raw JSON response from POST /v2/api/dry-run/scan for this test case.",
+							Computed:    true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -407,101 +785,94 @@ func (d *DryRunScanDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	var fileBytes []byte
-	fileName := "sample.txt"
-
-	if !data.FilePath.IsNull() && data.FilePath.ValueString() != "" {
-		b, baseName, err := readValidatedUploadFile(data.FilePath.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("File Validation Error", err.Error())
-			return
-		}
-		fileBytes = b
-		fileName = baseName
-	} else if !data.FileContent.IsNull() {
-		fileBytes = []byte(data.FileContent.ValueString())
-		if len(fileBytes) == 0 || len(fileBytes) > MaxUploadFileSize {
-			resp.Diagnostics.AddError("File Validation Error", "file_content must be non-empty and at most 20MB.")
-			return
-		}
-	} else {
-		resp.Diagnostics.AddError("Missing Input", "Either 'file_path' or 'file_content' must be provided.")
+	runDryRunDataSource(ctx, d.client, &data, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if !data.FileName.IsNull() && data.FileName.ValueString() != "" {
-		fileName = filepath.Base(data.FileName.ValueString())
-	}
-
-	fileSha := ""
-	if !data.FileSha.IsNull() && data.FileSha.ValueString() != "" {
-		fileSha = data.FileSha.ValueString()
-	} else {
-		hash := sha256.Sum256(fileBytes)
-		fileSha = hex.EncodeToString(hash[:])
-	}
-
-	dataProfileStr, err := normalizeDryRunDataProfileJSON(data.DataProfile.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Invalid Data Profile JSON", "The 'data_profile' argument must be valid JSON.")
-		return
-	}
-
-	parts := []dlpclient.MultipartPart{
-		{
-			FieldName: "fileSha",
-			Data:      []byte(fileSha),
-		},
-		{
-			FieldName: "dataProfile",
-			Data:      []byte(dataProfileStr),
-		},
-		{
-			FieldName:   "file",
-			FileName:    fileName,
-			ContentType: "application/octet-stream",
-			Data:        fileBytes,
-		},
-	}
-	if !data.SourceDataProfileId.IsNull() && data.SourceDataProfileId.ValueString() != "" {
-		parts = append(parts, dlpclient.MultipartPart{
-			FieldName: "sourceDataProfileId",
-			Data:      []byte(data.SourceDataProfileId.ValueString()),
-		})
-	}
-	if !data.DryRunServiceName.IsNull() && data.DryRunServiceName.ValueString() != "" {
-		parts = append(parts, dlpclient.MultipartPart{
-			FieldName: "dryRunServiceName",
-			Data:      []byte(data.DryRunServiceName.ValueString()),
-		})
-	}
-
-	var scanResult map[string]any
-	if err := d.client.DoMultipart(ctx, "POST", "/v2/api/dry-run/scan", nil, parts, &scanResult); err != nil {
-		resp.Diagnostics.AddError("Dry-Run Scan Failed", err.Error())
-		return
-	}
-
-	rawJSON, _ := json.Marshal(scanResult)
-	data.FileSha = types.StringValue(fileSha)
-	data.Tfid = types.StringValue("dry_run:" + fileSha)
-	data.ResultJson = types.StringValue(string(rawJSON))
-	if st, ok := scanResult["status"].(string); ok {
-		data.Status = types.StringValue(st)
-	} else {
-		data.Status = types.StringNull()
-	}
-	if vd, ok := scanResult["verdict"].(string); ok {
-		data.Verdict = types.StringValue(vd)
-	} else if rpt, ok := scanResult["report"].(map[string]any); ok {
-		if vd, ok := rpt["data_pattern_rule_1_verdict"].(string); ok {
-			data.Verdict = types.StringValue(vd)
-		} else {
-			data.Verdict = types.StringNull()
-		}
-	} else {
-		data.Verdict = types.StringNull()
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func runDryRunDataSource(ctx context.Context, client *dlpclient.Client, data *DryRunScanDataSourceModel, diags *diag.Diagnostics) {
+	dataProfileStr, resolvedSourceID, err := resolveDryRunDataProfileJSON(ctx, client, data.DataProfile, data.DataProfileId)
+	if err != nil {
+		diags.AddError("Invalid Data Profile Input", err.Error())
+		return
+	}
+
+	sourceID := resolvedSourceID
+	if !data.SourceDataProfileId.IsNull() && !data.SourceDataProfileId.IsUnknown() && data.SourceDataProfileId.ValueString() != "" {
+		sourceID = data.SourceDataProfileId.ValueString()
+	}
+	dryRunSvc := ""
+	if !data.DryRunServiceName.IsNull() && !data.DryRunServiceName.IsUnknown() {
+		dryRunSvc = data.DryRunServiceName.ValueString()
+	}
+
+	cases := data.TestCases
+	if len(cases) == 0 {
+		cases = []DryRunTestCaseModel{
+			{
+				Name:            types.StringValue("default"),
+				FilePath:        data.FilePath,
+				FileContent:     data.FileContent,
+				FileName:        data.FileName,
+				FileSha:         data.FileSha,
+				ExpectedVerdict: data.ExpectedVerdict,
+				ExpectedAction:  data.ExpectedAction,
+			},
+		}
+	}
+
+	failOnMismatch := true
+	if !data.FailOnMismatch.IsNull() && !data.FailOnMismatch.IsUnknown() {
+		failOnMismatch = data.FailOnMismatch.ValueBool()
+	}
+
+	var results []DryRunTestCaseResultModel
+	var failures []string
+	hashAcc := sha256.New()
+
+	for _, tc := range cases {
+		res, err := executeSingleDryRunCase(ctx, client, tc, dataProfileStr, sourceID, dryRunSvc)
+		if err != nil {
+			diags.AddError("Dry-Run Scan Failed", err.Error())
+			return
+		}
+		results = append(results, res)
+		_, _ = hashAcc.Write([]byte(res.FileSha.ValueString()))
+		if !res.Passed.ValueBool() {
+			failures = append(failures, fmt.Sprintf("%s (%s): %s", res.Name.ValueString(), res.FileName.ValueString(), res.FailureReason.ValueString()))
+		}
+	}
+
+	allPassed := len(failures) == 0
+	data.Passed = types.BoolValue(allPassed)
+	data.Results = results
+
+	if len(results) == 1 {
+		first := results[0]
+		data.FileSha = first.FileSha
+		data.Tfid = types.StringValue("dry_run:" + first.FileSha.ValueString())
+		data.Status = first.Status
+		data.Verdict = first.Verdict
+		data.Action = first.Action
+		data.ResultJson = first.ResultJson
+	} else if len(results) > 1 {
+		suiteSha := hex.EncodeToString(hashAcc.Sum(nil))
+		first := results[0]
+		data.FileSha = first.FileSha
+		data.Tfid = types.StringValue("dry_run_suite:" + suiteSha[:16])
+		data.Status = first.Status
+		data.Verdict = first.Verdict
+		data.Action = first.Action
+		data.ResultJson = first.ResultJson
+	}
+
+	if !allPassed && failOnMismatch {
+		diags.AddError(
+			"Dry-Run Assertion Failed",
+			fmt.Sprintf("%d of %d dry-run test case(s) failed expectation:\n- %s", len(failures), len(results), strings.Join(failures, "\n- ")),
+		)
+	}
 }

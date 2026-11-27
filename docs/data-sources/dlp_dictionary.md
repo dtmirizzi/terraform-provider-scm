@@ -3,12 +3,14 @@
 page_title: "scm_dlp_dictionary Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves details for an Enterprise DLP Keyword Dictionary.
+  [Beta / Experimental] Retrieves details for an Enterprise DLP Keyword Dictionary.
 ---
 
 # scm_dlp_dictionary (Data Source)
 
-Retrieves details for an Enterprise DLP Keyword Dictionary.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves details for an Enterprise DLP Keyword Dictionary.
 
 ## Example Usage
 

@@ -3,12 +3,14 @@
 page_title: "scm_dlp_tenant_channels Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves effective/licensed Enterprise DLP channels for the tenant.
+  [Beta / Experimental] Retrieves effective/licensed Enterprise DLP channels for the tenant.
 ---
 
 # scm_dlp_tenant_channels (Data Source)
 
-Retrieves effective/licensed Enterprise DLP channels for the tenant.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves effective/licensed Enterprise DLP channels for the tenant.
 
 ## Example Usage
 

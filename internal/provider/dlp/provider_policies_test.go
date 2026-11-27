@@ -15,6 +15,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -349,13 +350,27 @@ func setupPoliciesMockServer(b *mockPoliciesBackend) *httptest.Server {
 			return
 		}
 		defer file.Close()
-		_, _ = io.ReadAll(file)
+		contentBytes, _ := io.ReadAll(file)
+		contentStr := string(contentBytes)
+
+		verdict := "NOT_MATCHED"
+		actionStr := "allow"
+		if strings.Contains(contentStr, "4111") || strings.Contains(contentStr, "EMP-") || strings.Contains(contentStr, "MATCH_ME") {
+			verdict = "MATCHED"
+			actionStr = "block"
+		}
 
 		b.dryRunScanHit = true
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"report_id": "rep-9999",
-			"verdict":   "NOT_MATCHED",
+			"status":    "SUCCESS",
+			"verdict":   verdict,
+			"action":    actionStr,
+			"report": map[string]any{
+				"data_pattern_rule_1_verdict": verdict,
+				"action":                      actionStr,
+			},
 		})
 	})
 
@@ -901,7 +916,66 @@ func TestPolicies_Actions(t *testing.T) {
 		t.Fatal("Expected dry run scan endpoint to be called")
 	}
 
-	// 2. File Upload Path Validation (M9: reject /etc/passwd and ~/.ssh/*)
+	// 2. Dry Run Scan Data Source: Multi-case Positive & Negative Test Suite
+	scanDS := NewDryRunScanDataSource().(*DryRunScanDataSource)
+	var dsConfigResp datasource.ConfigureResponse
+	scanDS.Configure(ctx, datasource.ConfigureRequest{ProviderData: provData}, &dsConfigResp)
+	if dsConfigResp.Diagnostics.HasError() {
+		t.Fatalf("DryRunScanDataSource Configure failed: %v", dsConfigResp.Diagnostics)
+	}
+
+	suiteModel := DryRunScanDataSourceModel{
+		DataProfile:    types.StringValue(`{"name":"pci-profile"}`),
+		FailOnMismatch: types.BoolValue(true),
+		TestCases: []DryRunTestCaseModel{
+			{
+				Name:            types.StringValue("positive-visa-card"),
+				FileContent:     types.StringValue("Customer Visa card 4111 1111 1111 1111"),
+				FileName:        types.StringValue("positive_cards.csv"),
+				ExpectedVerdict: types.StringValue("MATCHED"),
+				ExpectedAction:  types.StringValue("block"),
+			},
+			{
+				Name:            types.StringValue("negative-benign-notes"),
+				FileContent:     types.StringValue("Internal engineering runbook with ticket 123456"),
+				FileName:        types.StringValue("negative_notes.txt"),
+				ExpectedVerdict: types.StringValue("NOT_MATCHED"),
+				ExpectedAction:  types.StringValue("allow"),
+			},
+		},
+	}
+	var dsDiags diag.Diagnostics
+	runDryRunDataSource(ctx, client, &suiteModel, &dsDiags)
+	if dsDiags.HasError() {
+		t.Fatalf("Expected positive+negative suite to pass, got diagnostics: %v", dsDiags)
+	}
+	if !suiteModel.Passed.ValueBool() || len(suiteModel.Results) != 2 {
+		t.Fatalf("Expected Passed=true and 2 results, got Passed=%v len=%d", suiteModel.Passed, len(suiteModel.Results))
+	}
+
+	// 3. Dry Run Scan Data Source: Negative Test Failure Detection (False Positive)
+	failingSuite := DryRunScanDataSourceModel{
+		DataProfile:    types.StringValue(`{"name":"pci-profile"}`),
+		FailOnMismatch: types.BoolValue(true),
+		TestCases: []DryRunTestCaseModel{
+			{
+				Name:            types.StringValue("negative-false-positive-check"),
+				FileContent:     types.StringValue("Benign file that accidentally has 4111-1111-1111-1111"),
+				FileName:        types.StringValue("false_positive.txt"),
+				ExpectedVerdict: types.StringValue("NOT_MATCHED"),
+			},
+		},
+	}
+	var failDiags diag.Diagnostics
+	runDryRunDataSource(ctx, client, &failingSuite, &failDiags)
+	if !failDiags.HasError() {
+		t.Fatal("Expected dry-run negative test mismatch (false positive) to produce an error diagnostic when fail_on_mismatch=true")
+	}
+	if failingSuite.Passed.ValueBool() {
+		t.Fatal("Expected Passed=false when negative test case matches")
+	}
+
+	// 4. File Upload Path Validation (M9: reject /etc/passwd and ~/.ssh/*)
 	if _, _, err := readValidatedUploadFile("/etc/passwd"); err == nil {
 		t.Fatal("Expected readValidatedUploadFile to reject /etc/passwd")
 	}

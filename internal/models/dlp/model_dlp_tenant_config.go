@@ -34,7 +34,7 @@ type DlpTenantConfigModel struct {
 }
 
 var DlpTenantConfigResourceSchema = rschema.Schema{
-	Description: "Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.",
+	Description: "[Beta / Experimental] Manages Enterprise DLP tenant-wide configuration including snippet capture, masking level, OCR, and alert exemption periods.",
 	Attributes: map[string]rschema.Attribute{
 		"id": rschema.StringAttribute{
 			Description: "Tenant identifier.",
@@ -117,7 +117,7 @@ var DlpTenantConfigResourceSchema = rschema.Schema{
 }
 
 var DlpTenantConfigDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves Enterprise DLP tenant-wide configuration.",
+	Description: "[Beta / Experimental] Retrieves Enterprise DLP tenant-wide configuration.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Description: "Tenant identifier.",
@@ -191,7 +191,7 @@ type DlpOcrEnablementModel struct {
 }
 
 var DlpOcrEnablementResourceSchema = rschema.Schema{
-	Description: "Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.",
+	Description: "[Beta / Experimental] Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.",
 	Attributes: map[string]rschema.Attribute{
 		"target_service_name": rschema.StringAttribute{
 			Description: "Target service name (e.g. prisma-access, ngfw, dlp).",
@@ -241,7 +241,7 @@ var DlpOcrEnablementResourceSchema = rschema.Schema{
 }
 
 var DlpOcrEnablementDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves Enterprise DLP OCR enablement state for a target service.",
+	Description: "[Beta / Experimental] Retrieves Enterprise DLP OCR enablement state for a target service.",
 	Attributes: map[string]dsschema.Attribute{
 		"target_service_name": dsschema.StringAttribute{
 			Description: "Target service name (e.g. prisma-access, ngfw, dlp).",
@@ -275,7 +275,7 @@ type DlpAlertSettingsModel struct {
 }
 
 var DlpAlertSettingsResourceSchema = rschema.Schema{
-	Description: "Manages Enterprise DLP alert settings.",
+	Description: "[Beta / Experimental] Manages Enterprise DLP alert settings.",
 	Attributes: map[string]rschema.Attribute{
 		"id": rschema.StringAttribute{
 			Description: "Alert settings identifier.",
@@ -308,7 +308,7 @@ var DlpAlertSettingsResourceSchema = rschema.Schema{
 }
 
 var DlpAlertSettingsDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves Enterprise DLP alert settings.",
+	Description: "[Beta / Experimental] Retrieves Enterprise DLP alert settings.",
 	Attributes: map[string]dsschema.Attribute{
 		"id": dsschema.StringAttribute{
 			Description: "Alert settings identifier.",
@@ -340,7 +340,7 @@ type DlpTenantChannelsModel struct {
 }
 
 var DlpTenantChannelsDataSourceSchema = dsschema.Schema{
-	Description: "Retrieves effective/licensed Enterprise DLP channels for the tenant.",
+	Description: "[Beta / Experimental] Retrieves effective/licensed Enterprise DLP channels for the tenant.",
 	Attributes: map[string]dsschema.Attribute{
 		"tfid": dsschema.StringAttribute{
 			Description: "Terraform identifier.",

@@ -11,6 +11,9 @@ The `scm` provider provides resources and data sources to manage and query Strat
 This provider covers the following aspects of Strata Cloud Manager:
 * NGFW & Prisma Access
 * ZTNA Connector
+* Enterprise DLP (`scm_dlp_*`) — **Beta / Experimental**
+
+> **Beta / Experimental Notice (Enterprise DLP):** All Enterprise DLP resources, data sources, and actions (`scm_dlp_*`) as well as the `dlp_host` and `dlp_service_name` provider settings are currently **Beta / Experimental** and subject to schema or behavior changes in future releases.
 
 ## Release Notes
 
@@ -646,8 +649,8 @@ There are multiple ways to specify the provider's parameters.  If overlapping va
 - `auth_url` (String) The URL to send auth credentials to which will return a JWT. Default: `https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token`. Environment variable: `SCM_AUTH_URL`. JSON config file variable: `auth_url`.
 - `client_id` (String) The client ID for the connection. Environment variable: `SCM_CLIENT_ID`. JSON config file variable: `client_id`.
 - `client_secret` (String, Sensitive) The client secret for the connection. Environment variable: `SCM_CLIENT_SECRET`. JSON config file variable: `client_secret`.
-- `dlp_host` (String) The hostname of the Enterprise DLP API. Default: `api.dlp.paloaltonetworks.com`. Environment variable: `SCM_DLP_HOST` or `DLP_HOST`.
-- `dlp_service_name` (String) The service-name header sent to the Enterprise DLP API. Default: `prisma-access`. Environment variable: `SCM_DLP_SERVICE_NAME` or `DLP_SERVICE_NAME`.
+- `dlp_host` (String) [Beta / Experimental] The hostname of the Enterprise DLP API. Default: `api.dlp.paloaltonetworks.com`. Environment variable: `SCM_DLP_HOST` or `DLP_HOST`.
+- `dlp_service_name` (String) [Beta / Experimental] The service-name header sent to the Enterprise DLP API. Default: `prisma-access`. Environment variable: `SCM_DLP_SERVICE_NAME` or `DLP_SERVICE_NAME`.
 - `headers` (Map of String) Custom HTTP headers to be sent with all API commands. Environment variable: `SCM_HEADERS`. JSON config file variable: `headers`.
 - `host` (String) The hostname of Strata Cloud Manager API. Default: `api.sase.paloaltonetworks.com`. Environment variable: `SCM_HOST`. JSON config file variable: `host`.
 - `logging` (String) The logging level of the provider and the underlying communication. Default: `quiet`. Environment variable: `SCM_LOGGING`. JSON config file variable: `logging`.

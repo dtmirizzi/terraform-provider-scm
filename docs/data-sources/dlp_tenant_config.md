@@ -3,12 +3,14 @@
 page_title: "scm_dlp_tenant_config Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves Enterprise DLP tenant-wide configuration.
+  [Beta / Experimental] Retrieves Enterprise DLP tenant-wide configuration.
 ---
 
 # scm_dlp_tenant_config (Data Source)
 
-Retrieves Enterprise DLP tenant-wide configuration.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves Enterprise DLP tenant-wide configuration.
 
 ## Example Usage
 

@@ -3,12 +3,14 @@
 page_title: "scm_dlp_ocr_enablement Resource - scm"
 subcategory: ""
 description: |-
-  Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.
+  [Beta / Experimental] Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.
 ---
 
 # scm_dlp_ocr_enablement (Resource)
 
-Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages Enterprise DLP Optical Character Recognition (OCR) enablement per target service.
 
 ## Example Usage
 

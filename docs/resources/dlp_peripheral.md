@@ -3,12 +3,14 @@
 page_title: "scm_dlp_peripheral Resource - scm"
 subcategory: ""
 description: |-
-  Manages an Enterprise DLP Peripheral.
+  [Beta / Experimental] Manages an Enterprise DLP Peripheral.
 ---
 
 # scm_dlp_peripheral (Resource)
 
-Manages an Enterprise DLP Peripheral.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages an Enterprise DLP Peripheral.
 
 ## Example Usage
 

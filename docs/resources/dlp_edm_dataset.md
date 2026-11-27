@@ -3,12 +3,14 @@
 page_title: "scm_dlp_edm_dataset Resource - scm"
 subcategory: ""
 description: |-
-  Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: terraform destroy only removes it from state.
+  [Beta / Experimental] Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: terraform destroy only removes it from state.
 ---
 
 # scm_dlp_edm_dataset (Resource)
 
-Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: `terraform destroy` only removes it from state.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Adopts an existing Enterprise DLP Exact Data Match (EDM) Dataset into Terraform state. EDM datasets are created and indexed out-of-band with the EDM CLI, so this resource never creates or deletes data: `terraform destroy` only removes it from state.
 
 ## Example Usage
 

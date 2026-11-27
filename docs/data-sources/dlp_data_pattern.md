@@ -3,12 +3,14 @@
 page_title: "scm_dlp_data_pattern Data Source - scm"
 subcategory: ""
 description: |-
-  Retrieves details for a specific Enterprise DLP Data Pattern.
+  [Beta / Experimental] Retrieves details for a specific Enterprise DLP Data Pattern.
 ---
 
 # scm_dlp_data_pattern (Data Source)
 
-Retrieves details for a specific Enterprise DLP Data Pattern.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Retrieves details for a specific Enterprise DLP Data Pattern.
 
 ## Example Usage
 

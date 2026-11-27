@@ -3,12 +3,14 @@
 page_title: "scm_dlp_forward_profile Resource - scm"
 subcategory: ""
 description: |-
-  Manages an Enterprise DLP Forward Profile.
+  [Beta / Experimental] Manages an Enterprise DLP Forward Profile.
 ---
 
 # scm_dlp_forward_profile (Resource)
 
-Manages an Enterprise DLP Forward Profile.
+> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.
+
+[Beta / Experimental] Manages an Enterprise DLP Forward Profile.
 
 ## Example Usage
 

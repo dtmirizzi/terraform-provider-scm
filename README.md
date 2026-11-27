@@ -3,6 +3,8 @@ Terraform Provider for Palo Alto Networks Strata Cloud Manager API
 
 **NOTE**: This provider is auto-generated.
 
+> **Beta / Experimental Notice (Enterprise DLP):** All Enterprise DLP resources, data sources, and actions (`scm_dlp_*`) included in this provider are currently **Beta / Experimental**. Schemas, attributes, and API behaviors for `scm_dlp_*` may change in subsequent releases.
+
 Requirements
 ------------
 
