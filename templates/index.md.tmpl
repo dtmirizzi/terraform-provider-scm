@@ -17,6 +17,72 @@ This provider covers the following aspects of Strata Cloud Manager:
 
 ## Release Notes
 
+### v1.0.14-beta.2
+
+* Enterprise DLP support is introduced in this release under the `scm_dlp_*` prefix.
+  **All `scm_dlp_*` resources, data sources, and actions, and the `dlp_host` and
+  `dlp_service_name` provider settings, are Beta / Experimental.** Their schemas,
+  attributes, and API behavior may change in future releases without a major version bump.
+  Every `scm_dlp_*` block in a configuration emits a Beta / Experimental warning during
+  `terraform validate` and `terraform plan`.
+
+#### Resources
+
+* resource/scm_dlp_alert_settings: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_data_filtering_profile: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_data_pattern: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_data_profile: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_dictionary: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_document_type: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_edm_dataset: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_endpoint_policy: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_forward_profile: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_ocr_enablement: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_peripheral: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_syslog_profile: Added support and examples (Beta / Experimental)
+* resource/scm_dlp_tenant_config: Added support and examples (Beta / Experimental)
+
+#### Data Sources
+
+* data-source/scm_dlp_alert_settings: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_filtering_profile: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_filtering_profile_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_pattern: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_pattern_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_profile: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_data_profile_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_dictionary: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_dictionary_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_document_type: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_document_type_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_dry_run_scan: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_edm_dataset: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_edm_dataset_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_endpoint_policy: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_endpoint_policy_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_forward_profile: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_forward_profile_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_ocr_enablement: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_peripheral: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_peripheral_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_syslog_profile: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_syslog_profile_list: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_tenant_channels: Added support and examples (Beta / Experimental)
+* data-source/scm_dlp_tenant_config: Added support and examples (Beta / Experimental)
+
+#### Actions
+
+* actions/scm_dlp_dry_run_scan: Added support and examples (Beta / Experimental)
+
+#### Provider
+
+* Added `dlp_host` (`SCM_DLP_HOST` / `DLP_HOST`) and `dlp_service_name` (`SCM_DLP_SERVICE_NAME` / `DLP_SERVICE_NAME`) settings (Beta / Experimental)
+
+#### NOTES
+
+* This is a beta release for Enterprise DLP support.
+* Customers must explicitly opt-in by specifying version = "1.0.14-beta.2"
+
 ### v1.0.13
 
 * ZTNA Connector support is introduced in this release under a new ztna_* resource prefix,
