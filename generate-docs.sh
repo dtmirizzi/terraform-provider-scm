@@ -49,4 +49,16 @@ for PREFIX in "${PREFIXES[@]}"; do
   rm -rf "docs-${PREFIX}"
 done
 
+# Enterprise DLP (scm_dlp_*) is Beta / Experimental. Insert a callout under the
+# H1 of every DLP doc page so the notice survives regeneration. Idempotent.
+DLP_BETA_CALLOUT='> **Beta / Experimental:** Enterprise DLP support (`scm_dlp_*`) in `terraform-provider-scm` is currently in **Beta / Experimental** and subject to schema or behavior changes.'
+for DOC in docs/resources/dlp_*.md docs/data-sources/dlp_*.md docs/actions/dlp_*.md; do
+  [ -f "$DOC" ] || continue
+  grep -qF -- "$DLP_BETA_CALLOUT" "$DOC" && continue
+  CALLOUT="$DLP_BETA_CALLOUT" awk '
+    { print }
+    !done && /^# scm_dlp_/ { print ""; print ENVIRON["CALLOUT"]; done = 1 }
+  ' "$DOC" > "$DOC.tmp" && mv "$DOC.tmp" "$DOC"
+done
+
 echo "Documentation generation complete."
