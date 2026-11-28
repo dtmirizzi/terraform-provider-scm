@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -986,3 +988,24 @@ func TestPolicies_Actions(t *testing.T) {
 
 // Suppress unused imports check
 var _ = strconv.Itoa
+
+func TestIsPathRestrictedCredentialLocations(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home directory")
+	}
+	for _, rel := range []string{".kube/config", ".docker/config.json", ".azure/accessTokens.json", ".terraform.d/credentials.tfrc.json", ".ssh/id_ed25519", ".git-credentials"} {
+		if p := filepath.Join(home, rel); !isPathRestricted(p) {
+			t.Errorf("expected %s to be restricted", p)
+		}
+	}
+	if p := filepath.Join(home, "projects", "dlp", "positive.csv"); isPathRestricted(p) {
+		t.Errorf("expected %s to be allowed", p)
+	}
+	if p := filepath.Join(os.TempDir(), "dlp-sample.txt"); isPathRestricted(p) {
+		t.Errorf("expected temp file %s to be allowed", p)
+	}
+	if !pathWithin("/etc/passwd", "/etc") || pathWithin("/etcetera/x", "/etc") {
+		t.Error("pathWithin prefix matching is wrong")
+	}
+}

@@ -230,23 +230,25 @@ func TestSecurityHardening(t *testing.T) {
 		t.Errorf("expected same-origin URL to be allowed, got u=%q err=%v", u, err)
 	}
 
-	// 3. Cross-origin redirect strips Authorization header
-	var redirectSeenAuth string
+	// 3. Cross-origin redirects are refused outright: the target is never
+	// contacted, so neither the token, custom headers nor the body reach it.
+	var targetHit int32
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		redirectSeenAuth = r.Header.Get("Authorization")
+		atomic.AddInt32(&targetHit, 1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer targetSrv.Close()
 
 	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, targetSrv.URL+"/landed", http.StatusFound)
+		http.Redirect(w, r, targetSrv.URL+"/landed", http.StatusTemporaryRedirect)
 	}))
 	defer originSrv.Close()
 
 	setupCli := &setup.Client{
 		Jwt:          "secret-bearer-token",
 		JwtExpiresAt: time.Now().Add(1 * time.Hour),
+		Headers:      map[string]string{"X-Custom-Secret": "hunter2"},
 	}
 	redirClient := NewClient(Config{
 		SetupClient: setupCli,
@@ -254,11 +256,12 @@ func TestSecurityHardening(t *testing.T) {
 		Host:        originSrv.URL,
 	})
 	var out map[string]any
-	if err := redirClient.Get(context.Background(), "/v1/api/redirect-me", nil, &out); err != nil {
-		t.Fatalf("unexpected redirect error: %v", err)
+	err := redirClient.Post(context.Background(), "/v1/api/redirect-me", nil, map[string]string{"file": "payload"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "cross-origin redirect") {
+		t.Fatalf("expected cross-origin redirect to be refused, got %v", err)
 	}
-	if redirectSeenAuth != "" {
-		t.Errorf("expected Authorization header to be stripped on cross-origin redirect, got %q", redirectSeenAuth)
+	if atomic.LoadInt32(&targetHit) != 0 {
+		t.Errorf("redirect target was contacted %d times; expected 0", targetHit)
 	}
 }
 
@@ -280,5 +283,108 @@ func TestAPIErrorRedactsSecrets(t *testing.T) {
 	}
 	if got := RedactBody("plain text failure"); got != "plain text failure" {
 		t.Fatalf("non-JSON body should pass through, got %q", got)
+	}
+}
+
+func TestSameOriginRedirectFollowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/old" {
+			http.Redirect(w, r, "/new", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	c := NewClient(Config{HttpClient: srv.Client(), Host: srv.URL})
+	var out map[string]any
+	if err := c.Get(context.Background(), "/old", nil, &out); err != nil || out["ok"] != true {
+		t.Fatalf("expected same-origin redirect to be followed, got out=%v err=%v", out, err)
+	}
+}
+
+func TestRedirectPolicyWithoutCallerHTTPClient(t *testing.T) {
+	c := NewClient(Config{Host: "https://api.dlp.paloaltonetworks.com"})
+	if c.HttpClient.CheckRedirect == nil {
+		t.Fatal("expected redirect policy to be installed even when no HTTP client is supplied")
+	}
+	if c.HttpClient.Timeout != DefaultRequestTimeout {
+		t.Errorf("expected default timeout, got %v", c.HttpClient.Timeout)
+	}
+}
+
+func TestUnmarshalErrorRedactsBody(t *testing.T) {
+	// A 200 whose body is valid JSON but the wrong shape for out.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"cert":"-----BEGIN CERTIFICATE-----","client_secret":"s3cr3t","pad":"` + strings.Repeat("x", 2*MaxErrorResponseLength) + `"}`))
+	}))
+	defer srv.Close()
+	c := NewClient(Config{HttpClient: srv.Client(), Host: srv.URL})
+	var out []string
+	err := c.Get(context.Background(), "/x", nil, &out)
+	if err == nil {
+		t.Fatal("expected unmarshal error")
+	}
+	for _, leaked := range []string{"BEGIN CERTIFICATE", "s3cr3t"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Fatalf("unmarshal error leaked %q", leaked)
+		}
+	}
+	if len(err.Error()) > 2*MaxErrorResponseLength {
+		t.Errorf("unmarshal error not truncated: %d bytes", len(err.Error()))
+	}
+}
+
+func TestPlaintextHTTPRefusedExceptLoopback(t *testing.T) {
+	for _, host := range []string{"http://api.dlp.paloaltonetworks.com", "http://10.0.0.5:8080"} {
+		c := NewClient(Config{Host: host})
+		if _, err := c.buildURL("/v2/api/data-patterns", nil); err == nil || !strings.Contains(err.Error(), "plaintext HTTP") {
+			t.Errorf("%s: expected plaintext HTTP to be refused, got %v", host, err)
+		}
+	}
+	c := NewClient(Config{Host: "api.dlp.paloaltonetworks.com", Protocol: "http"})
+	if _, err := c.buildURL("/x", nil); err == nil {
+		t.Error("protocol=http: expected plaintext HTTP to be refused")
+	}
+	for _, host := range []string{"http://127.0.0.1:9999", "http://localhost:9999", "http://[::1]:9999", "https://api.dlp.paloaltonetworks.com"} {
+		c := NewClient(Config{Host: host})
+		if _, err := c.buildURL("/x", nil); err != nil {
+			t.Errorf("%s: expected to be allowed, got %v", host, err)
+		}
+	}
+}
+
+func TestResponseSizeLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chunk := []byte(strings.Repeat("a", 1024*1024))
+		for i := 0; i <= MaxResponseSize/len(chunk); i++ {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(Config{HttpClient: srv.Client(), Host: srv.URL})
+	var out map[string]any
+	if err := c.Get(context.Background(), "/big", nil, &out); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized response to be rejected, got %v", err)
+	}
+}
+
+func TestSetupClientIsNotShared(t *testing.T) {
+	shared := &setup.Client{
+		Jwt:          "scm-token",
+		JwtExpiresAt: time.Now().Add(time.Hour),
+		Headers:      map[string]string{"X-A": "b"},
+	}
+	c := NewClient(Config{SetupClient: shared, Host: "https://api.dlp.paloaltonetworks.com"})
+	if c.SetupClient == shared {
+		t.Fatal("DLP client must own a copy of the setup client so token refresh cannot race SCM clients")
+	}
+	if c.SetupClient.Jwt != "scm-token" || c.SetupClient.Headers["X-A"] != "b" {
+		t.Fatal("copied setup client lost its credentials or headers")
+	}
+	c.SetupClient.Jwt = "dlp-token"
+	if shared.Jwt != "scm-token" {
+		t.Fatal("updating the DLP token must not modify the shared setup client")
 	}
 }

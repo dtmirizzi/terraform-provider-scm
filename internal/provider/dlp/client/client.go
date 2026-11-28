@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"net/url"
@@ -31,6 +32,9 @@ const (
 	DefaultMaxRetryAfter   = 60 * time.Second
 	DefaultRequestTimeout  = 60 * time.Second
 	MaxErrorResponseLength = 4096
+	// MaxResponseSize caps how much of a DLP API response body is read into
+	// memory, so a misbehaving or hostile endpoint cannot exhaust memory.
+	MaxResponseSize = 32 * 1024 * 1024
 )
 
 var validResourceIDRe = regexp.MustCompile(`^[A-Za-z0-9._~:-]{1,128}$`)
@@ -63,11 +67,17 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	body := RedactBody(e.ResponseBody)
+	return fmt.Sprintf("DLP API %s %s failed (%d): %s", e.Method, e.URL, e.StatusCode, safeBody(e.ResponseBody))
+}
+
+// safeBody redacts secret-like fields and truncates a response body so it can
+// be included in an error or log message.
+func safeBody(body string) string {
+	body = RedactBody(body)
 	if len(body) > MaxErrorResponseLength {
 		body = body[:MaxErrorResponseLength] + "...(truncated)"
 	}
-	return fmt.Sprintf("DLP API %s %s failed (%d): %s", e.Method, e.URL, e.StatusCode, body)
+	return body
 }
 
 // IsNotFound returns true if the error is an HTTP 404 Not Found.
@@ -154,33 +164,31 @@ func NewClient(cfg Config) *Client {
 		clientName = DefaultClientName
 	}
 
-	httpClient := cfg.HttpClient
-	if httpClient == nil && cfg.SetupClient != nil && cfg.SetupClient.HttpClient != nil {
-		// Clone the http.Client so we can attach redirect protection and default timeout without mutating SetupClient.HttpClient
-		cloned := *cfg.SetupClient.HttpClient
-		httpClient = &cloned
+	// Clone the http.Client so we can attach redirect protection and a default
+	// timeout without mutating the caller's (or SetupClient's) client.
+	var cloned http.Client
+	if cfg.HttpClient != nil {
+		cloned = *cfg.HttpClient
+	} else if cfg.SetupClient != nil && cfg.SetupClient.HttpClient != nil {
+		cloned = *cfg.SetupClient.HttpClient
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: DefaultRequestTimeout}
-	} else {
-		cloned := *httpClient
-		if cloned.Timeout == 0 {
-			cloned.Timeout = DefaultRequestTimeout
-		}
-		baseParsed, _ := url.Parse(baseURL)
-		cloned.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return errors.New("stopped after 10 redirects")
-			}
-			// Never forward Authorization or session headers across origins (DLP-002)
-			if baseParsed != nil && (!strings.EqualFold(req.URL.Scheme, baseParsed.Scheme) || !strings.EqualFold(req.URL.Host, baseParsed.Host)) {
-				req.Header.Del("Authorization")
-				req.Header.Del("x-auth-jwt")
-			}
-			return nil
-		}
-		httpClient = &cloned
+	if cloned.Timeout == 0 {
+		cloned.Timeout = DefaultRequestTimeout
 	}
+	baseParsed, _ := url.Parse(baseURL)
+	cloned.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		// Refuse redirects to any other origin (DLP-002). Following them would
+		// forward custom provider headers and, for 307/308, replay the request
+		// body (which may contain uploaded files) to a host we did not choose.
+		if baseParsed == nil || !sameOrigin(req.URL, baseParsed) {
+			return fmt.Errorf("refusing cross-origin redirect from %s to %s://%s", via[0].URL.Host, req.URL.Scheme, req.URL.Host)
+		}
+		return nil
+	}
+	httpClient := &cloned
 
 	userAgent := cfg.UserAgent
 	if userAgent == "" && cfg.SetupClient != nil && cfg.SetupClient.Agent != "" {
@@ -190,8 +198,20 @@ func NewClient(cfg Config) *Client {
 		userAgent = "Terraform-Provider-SCM-DLP"
 	}
 
+	// Give the DLP client its own copy of the setup client. scm-go reads and
+	// writes Jwt/JwtExpiresAt without a lock, so sharing one *setup.Client
+	// with the SCM API clients races whenever both refresh the token. The copy
+	// keeps the same credentials, headers and HTTP client but owns its token
+	// state, which getToken guards with c.mu. This must run during provider
+	// configuration, before any API client can be refreshing the token.
+	var setupClient *setup.Client
+	if cfg.SetupClient != nil {
+		sc := *cfg.SetupClient
+		setupClient = &sc
+	}
+
 	return &Client{
-		SetupClient: cfg.SetupClient,
+		SetupClient: setupClient,
 		HttpClient:  httpClient,
 		BaseURL:     baseURL,
 		ServiceName: serviceName,
@@ -219,6 +239,36 @@ func (c *Client) getToken(ctx context.Context, forceRefresh bool) (string, error
 	return c.SetupClient.Jwt, nil
 }
 
+func sameOrigin(a, b *url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Host, b.Host)
+}
+
+// isLoopbackHost reports whether host (without port) is localhost or a
+// loopback IP address.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// checkTransportSecurity refuses to send the bearer token over plaintext HTTP
+// to anything other than a loopback address (local mocks and tests).
+func checkTransportSecurity(u *url.URL) error {
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("refusing to send authenticated DLP request over plaintext HTTP to %q; use https (check dlp_host and the provider protocol setting)", u.Host)
+	default:
+		return fmt.Errorf("unsupported DLP URL scheme %q", u.Scheme)
+	}
+}
+
 func (c *Client) buildURL(path string, params map[string]string) (string, error) {
 	var rawURL string
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
@@ -237,6 +287,9 @@ func (c *Client) buildURL(path string, params map[string]string) (string, error)
 
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
+		return "", err
+	}
+	if err := checkTransportSecurity(parsed); err != nil {
 		return "", err
 	}
 	if len(params) > 0 {
@@ -387,9 +440,12 @@ func (c *Client) doWithRetry(
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseSize+1))
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	if len(respBytes) > MaxResponseSize {
+		return fmt.Errorf("DLP API %s %s response exceeds %d MB limit", method, fullURL, MaxResponseSize/(1024*1024))
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized && c.SetupClient != nil && attempt == 0 {
@@ -438,7 +494,7 @@ func (c *Client) doWithRetry(
 	}
 
 	if err := json.Unmarshal(respBytes, out); err != nil {
-		return fmt.Errorf("failed to unmarshal response from %s %s: %w (body: %s)", method, fullURL, err, string(respBytes))
+		return fmt.Errorf("failed to unmarshal response from %s %s: %w (body: %s)", method, fullURL, err, safeBody(string(respBytes)))
 	}
 	return nil
 }

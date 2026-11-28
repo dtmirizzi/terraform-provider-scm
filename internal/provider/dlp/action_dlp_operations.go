@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
@@ -31,38 +32,78 @@ var (
 
 const MaxUploadFileSize = 20 * 1024 * 1024 // 20 MB
 
+// pathWithin reports whether path equals dir or is inside it. Comparison is
+// case-insensitive on Windows and macOS, whose default filesystems are.
+func pathWithin(path, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	path, dir = filepath.Clean(path), filepath.Clean(dir)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		path, dir = strings.ToLower(path), strings.ToLower(dir)
+	}
+	if path == dir {
+		return true
+	}
+	if !strings.HasSuffix(dir, string(filepath.Separator)) {
+		dir += string(filepath.Separator)
+	}
+	return strings.HasPrefix(path, dir)
+}
+
+// restrictedHomeEntries are credential and config locations under the user's
+// home directory that dry-run scans must never upload.
+var restrictedHomeEntries = []string{
+	".ssh", ".aws", ".azure", ".config", ".gnupg", ".netrc", ".kube", ".docker",
+	".terraform.d", ".terraformrc", ".oci", ".gcloud", ".password-store",
+	".git-credentials", ".npmrc", ".pypirc", ".vault-token",
+	filepath.Join("AppData", "Roaming"), filepath.Join("AppData", "Local"),
+}
+
+// isPathRestricted is a best-effort guard against accidentally uploading
+// system files or credentials to the DLP API. It is not a security boundary:
+// whoever writes the Terraform configuration can already read local files
+// (for example with file()).
 func isPathRestricted(resolvedPath string) bool {
-	sensitiveDirs := []string{"/etc", "/var", "/dev", "/usr", "/bin", "/sbin", "/opt", "/sys", "/proc", "/root"}
-	tmp := filepath.Clean(os.TempDir())
-	realTmp := tmp
-	if eval, err := filepath.EvalSymlinks(tmp); err == nil {
-		realTmp = filepath.Clean(eval)
+	var tmpDirs []string
+	if tmp := os.TempDir(); tmp != "" {
+		tmpDirs = append(tmpDirs, filepath.Clean(tmp))
+		if eval, err := filepath.EvalSymlinks(tmp); err == nil {
+			tmpDirs = append(tmpDirs, filepath.Clean(eval))
+		}
 	}
 
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		sensitiveHome := []string{
-			filepath.Join(home, ".ssh"),
-			filepath.Join(home, ".aws"),
-			filepath.Join(home, ".config"),
-			filepath.Join(home, ".gnupg"),
-			filepath.Join(home, ".netrc"),
-		}
-		for _, s := range sensitiveHome {
-			sClean := filepath.Clean(s)
-			if resolvedPath == sClean || strings.HasPrefix(resolvedPath, sClean+string(filepath.Separator)) {
+		for _, e := range restrictedHomeEntries {
+			if pathWithin(resolvedPath, filepath.Join(home, e)) {
 				return true
 			}
 		}
 	}
 
-	for _, s := range sensitiveDirs {
-		if resolvedPath == s || strings.HasPrefix(resolvedPath, s+string(filepath.Separator)) {
-			if resolvedPath == tmp || strings.HasPrefix(resolvedPath, tmp+string(filepath.Separator)) ||
-				resolvedPath == realTmp || strings.HasPrefix(resolvedPath, realTmp+string(filepath.Separator)) {
+	var systemDirs []string
+	if runtime.GOOS == "windows" {
+		for _, env := range []string{"SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"} {
+			if v := os.Getenv(env); v != "" {
+				systemDirs = append(systemDirs, v)
+			}
+		}
+		systemDirs = append(systemDirs, `C:\Windows`, `C:\Program Files`, `C:\Program Files (x86)`, `C:\ProgramData`)
+	} else {
+		systemDirs = []string{"/etc", "/var", "/private/etc", "/private/var", "/dev", "/usr", "/bin", "/sbin", "/opt", "/sys", "/proc", "/boot", "/Library", "/System"}
+	}
+
+	for _, s := range systemDirs {
+		if !pathWithin(resolvedPath, s) {
+			continue
+		}
+		// The OS temp dir may live under a system dir (e.g. /var/folders on macOS).
+		for _, t := range tmpDirs {
+			if pathWithin(resolvedPath, t) {
 				return false
 			}
-			return true
 		}
+		return true
 	}
 	return false
 }
@@ -411,7 +452,7 @@ func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, res
 				Optional:    true,
 			},
 			"file_path": schema.StringAttribute{
-				Description: "Path to a single file to upload and scan. Used when test_cases is not specified.",
+				Description: "Path to a single file to upload and scan. Used when test_cases is not specified. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.",
 				Optional:    true,
 			},
 			"file_content": schema.StringAttribute{
@@ -448,7 +489,7 @@ func (a *DryRunScanAction) Schema(_ context.Context, _ action.SchemaRequest, res
 							Optional:    true,
 						},
 						"file_path": schema.StringAttribute{
-							Description: "Path to the local file to upload and scan for this test case.",
+							Description: "Path to the local file to upload and scan for this test case. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.",
 							Optional:    true,
 						},
 						"file_content": schema.StringAttribute{
@@ -622,12 +663,13 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Optional:    true,
 			},
 			"file_path": dsschema.StringAttribute{
-				Description: "Path to a single file to upload and scan. Used when test_cases is not specified.",
+				Description: "Path to a single file to upload and scan. Used when test_cases is not specified. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.",
 				Optional:    true,
 			},
 			"file_content": dsschema.StringAttribute{
 				Description: "Raw content of a single file to scan. Used when test_cases is not specified.",
 				Optional:    true,
+				Sensitive:   true,
 			},
 			"file_name": dsschema.StringAttribute{
 				Description: "Name of the file being scanned (defaults to 'sample.txt' if file_content is used).",
@@ -660,12 +702,13 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Optional:    true,
 						},
 						"file_path": dsschema.StringAttribute{
-							Description: "Path to the local file to upload and scan for this test case.",
+							Description: "Path to the local file to upload and scan for this test case. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.",
 							Optional:    true,
 						},
 						"file_content": dsschema.StringAttribute{
 							Description: "Inline content to scan for this test case.",
 							Optional:    true,
+							Sensitive:   true,
 						},
 						"file_name": dsschema.StringAttribute{
 							Description: "File name sent in the multipart upload (defaults to basename of file_path or 'sample.txt').",
@@ -717,6 +760,7 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"result_json": dsschema.StringAttribute{
 				Description: "Full JSON response from POST /v2/api/dry-run/scan (for single-file scan or first test case).",
 				Computed:    true,
+				Sensitive:   true,
 			},
 			"results": dsschema.ListNestedAttribute{
 				Description: "Per-file dry-run scan results for all executed test cases.",
@@ -766,6 +810,7 @@ func (d *DryRunScanDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 						"result_json": dsschema.StringAttribute{
 							Description: "Raw JSON response from POST /v2/api/dry-run/scan for this test case.",
 							Computed:    true,
+							Sensitive:   true,
 						},
 					},
 				},

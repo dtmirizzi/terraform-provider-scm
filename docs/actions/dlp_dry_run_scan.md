@@ -55,7 +55,7 @@ action "scm_dlp_dry_run_scan" "check" {
 - `fail_on_mismatch` (Boolean) Whether to fail the Terraform operation with an error diagnostic if any expected_verdict or expected_action does not match the scan result (defaults to true).
 - `file_content` (String) Raw content of a single file to scan. Used when test_cases is not specified.
 - `file_name` (String) Name of the file being scanned (defaults to 'sample.txt' if file_content is used).
-- `file_path` (String) Path to a single file to upload and scan. Used when test_cases is not specified.
+- `file_path` (String) Path to a single file to upload and scan. Used when test_cases is not specified. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.
 - `file_sha` (String) SHA256 hex string of the file (computed automatically if omitted).
 - `source_data_profile_id` (String) Optional source data profile ID.
 - `test_cases` (Attributes List) Optional list of positive and negative test cases (files or inline content) to scan against the data profile. (see [below for nested schema](#nestedatt--test_cases))
@@ -69,6 +69,6 @@ Optional:
 - `expected_verdict` (String) Expected scan verdict: 'MATCHED' for positive test cases or 'NOT_MATCHED' for negative test cases.
 - `file_content` (String) Inline content to scan for this test case.
 - `file_name` (String) File name sent in the multipart upload (defaults to basename of file_path or 'sample.txt').
-- `file_path` (String) Path to the local file to upload and scan for this test case.
+- `file_path` (String) Path to the local file to upload and scan for this test case. System directories and common credential locations (e.g. ~/.ssh, ~/.aws, ~/.kube) are refused as a best-effort safeguard.
 - `file_sha` (String) Optional SHA256 hex digest of the file.
 - `name` (String) Descriptive name for this test case (e.g. 'positive-pci-csv' or 'negative-benign-readme').
